@@ -9,7 +9,7 @@ namespace PriconneALLTLFixup;
 public static class Log
 {
     #region 1. Internal Infrastructure
-    private static ManualLogSource? _internalSource;
+    private static ManualLogSource _internalSource;
 
     public static bool IsActive => _internalSource != null;
 
@@ -17,7 +17,6 @@ public static class Log
     #endregion
 
     #region 2. System Integration
-
     internal static void Initialize(ManualLogSource source)
     {
         if (_internalSource != null) return;
@@ -39,7 +38,7 @@ public static class Log
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Warn(object msg) => Dispatch(LogLevel.Warning, msg);
 
-    public static void Error(object msg, Exception? ex = null)
+    public static void Error(object msg, Exception ex = null)
     {
         if (ex != null) Dispatch(LogLevel.Error, $"{msg}\n[Trace]: {ex.Message}\n{ex.StackTrace}");
         else Dispatch(LogLevel.Error, msg);
@@ -64,7 +63,7 @@ public static class Log
     #endregion
 
     #region 5. Internal Core Logic
-    private static void Dispatch(LogLevel level, object? message)
+    private static void Dispatch(LogLevel level, object message)
     {
         if (_internalSource == null) return;
 

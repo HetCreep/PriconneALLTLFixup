@@ -17,13 +17,11 @@ namespace PriconneALLTLFixup;
 public static class Util
 {
     #region 1. Infrastructure & Shared State
-
     public const BindingFlags UniversalFlags = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
     private static readonly object _globalSync = new();
     #endregion
 
     #region MODULE A: Text & Translation Engine
-
     private static readonly Regex ColorTagRegex = new(@"\[([A-Fa-f0-9]{6})\]", RegexOptions.Compiled);
     private static readonly Regex ColorEndRegex = new(@"\[-\]", RegexOptions.Compiled);
     private static readonly Regex MarkCleanupRegex = new(@"(\p{Mn})\1+", RegexOptions.Compiled);
@@ -32,7 +30,7 @@ public static class Util
     private static readonly List<string> _poolHistory = new(4000);
     private static readonly Dictionary<int, string> _staticTranslationMap = new(1024);
 
-    [ThreadStatic] private static StringBuilder? _processingBuffer;
+    [ThreadStatic] private static StringBuilder _processingBuffer;
 
     public static string Sanitize(this string input)
     {
@@ -72,13 +70,12 @@ public static class Util
     #endregion
 
     #region MODULE B: Universal UI & Duck Typing
+    private static readonly Dictionary<(Type, string), PropertyInfo> _memberCache = new(256);
 
-    private static readonly Dictionary<(Type, string), PropertyInfo?> _memberCache = new(256);
-
-    public static bool IsTextElement(this Component? c) => c != null &&
+    public static bool IsTextElement(this Component c) => c != null &&
         (c is UnityEngine.UI.Text || c is TextMesh || c.GetType().Name.StartsWith("TextMeshPro"));
 
-    public static void UpdateTextContent(this Component? c, string text)
+    public static void UpdateTextContent(this Component c, string text)
     {
         if (c == null) return;
         if (c is UnityEngine.UI.Text t) t.text = text;
@@ -89,17 +86,16 @@ public static class Util
     private static void ReflectiveSet(Component c, string name, object value)
     {
         var key = (c.GetType(), name);
-        PropertyInfo? prop;
+        PropertyInfo prop;
         lock (_globalSync) { if (!_memberCache.TryGetValue(key, out prop)) _memberCache[key] = prop = c.GetType().GetProperty(name, UniversalFlags); }
         prop?.SetValue(c, value);
     }
     #endregion
 
     #region MODULE C: Integration & Sync Engine (XUAT)
-
-    private static object? _xuatRef;
-    private static Func<object, bool>? _isXuatActive;
-    private static Func<object, float>? _xuatDelayGetter;
+    private static object _xuatRef;
+    private static Func<object, bool> _isXuatActive;
+    private static Func<object, float> _xuatDelayGetter;
     private static bool _xuatInited;
 
     private static void EnsureXuatConnection()
@@ -136,8 +132,7 @@ public static class Util
     #endregion
 
     #region MODULE D: Asset Management & Font Fallback
-
-    public static Font? SharedMainFont { get; private set; }
+    public static Font SharedMainFont { get; private set; }
     private static readonly Dictionary<string, Font> _fontCache = new();
 
     public static void PreloadGlobalResources()
@@ -206,9 +201,8 @@ public static class Util
     #endregion
 
     #region MODULE E: Lifecycle & Object Security
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsSafe(this Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase? obj) => obj != null && obj.Pointer != IntPtr.Zero;
+    public static bool IsSafe(this Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase obj) => obj != null && obj.Pointer != IntPtr.Zero;
 
     public static T Persistent<T>(this T obj) where T : UnityEngine.Object
     {
@@ -227,9 +221,8 @@ public static class Util
     #endregion
 
     #region MODULE F: Hierarchy & Yield Instructions
-
-    [ThreadStatic] private static StringBuilder? _pathBuf;
-    public static string GetHierarchyPath(this Transform? t)
+    [ThreadStatic] private static StringBuilder _pathBuf;
+    public static string GetHierarchyPath(this Transform t)
     {
         if (t == null) return "";
         _pathBuf ??= new StringBuilder(128); _pathBuf.Clear();
@@ -239,7 +232,7 @@ public static class Util
         return _pathBuf.ToString();
     }
 
-    public static Transform? FindDeep(this Transform p, string name)
+    public static Transform FindDeep(this Transform p, string name)
     {
         var q = new Queue<Transform>(); q.Enqueue(p);
         while (q.Count > 0) { var c = q.Dequeue(); if (c.name == name) return c; foreach (Transform child in c) q.Enqueue(child); }

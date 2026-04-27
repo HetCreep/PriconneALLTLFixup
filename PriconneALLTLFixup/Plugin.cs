@@ -12,17 +12,14 @@ namespace PriconneALLTLFixup;
 public class Plugin : BasePlugin
 {
     #region 1. Infrastructure Fields
-
     private readonly HarmonyPatchController _patchController = new(MyPluginInfo.HarmonyGuid, MyPluginInfo.Guid);
     #endregion
 
     #region 2. Global Accessor
-
     public static Plugin Instance { get; private set; } = null!;
     #endregion
 
     #region 3. Lifecycle Management (Load/Unload)
-
     public override void Load()
     {
         Instance = this;
@@ -74,7 +71,6 @@ public class Plugin : BasePlugin
     #endregion
 
     #region 4. Core Operation Methods
-
     private void InitiatePatchDeployment()
     {
         if (PriconneALLTLFixup.Log.IsDeveloperContext)

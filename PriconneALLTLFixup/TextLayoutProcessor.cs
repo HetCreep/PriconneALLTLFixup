@@ -10,7 +10,6 @@ namespace PriconneALLTLFixup;
 public class TextLayoutProcessor
 {
     #region 1. Thread-Safe Caching & Global State
-
     private static readonly object _syncRoot = new();
 
     private static readonly Dictionary<int, float> _advanceCache = new(2048);
@@ -19,23 +18,20 @@ public class TextLayoutProcessor
     #endregion
 
     #region 2. Readonly Internal Fields
-
     private readonly TextMesh _component;
-    private readonly Font? _font;
+    private readonly Font _font;
     private readonly Renderer _renderer;
 
     private readonly StringBuilder _buffer = new(2048);
     #endregion
 
     #region 3. Formal Properties
-
     public float ContentWidth => MeasureContent(_component.text);
 
     public float ViewportHeight => _renderer.bounds.size.y;
     #endregion
 
     #region 4. Professional Constructor
-
     public TextLayoutProcessor(TextMesh mesh)
     {
         _component = mesh ?? throw new ArgumentNullException(nameof(mesh));
@@ -48,7 +44,6 @@ public class TextLayoutProcessor
     #endregion
 
     #region 5. Primary Layout API
-
     public float MeasureContent(string text)
     {
         if (string.IsNullOrEmpty(text)) return 0;

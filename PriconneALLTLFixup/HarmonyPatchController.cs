@@ -16,7 +16,7 @@ public class HarmonyPatchController
     private readonly Harmony _harmony;
     private readonly string _namespaceFilter;
 
-    private static readonly FieldInfo? _priorityField = AccessTools.Field(typeof(HarmonyPriority), "priority");
+    private static readonly FieldInfo _priorityField = AccessTools.Field(typeof(HarmonyPriority), "priority");
 
     private readonly List<Type> _criticalRegistry = new();
     private readonly List<Type> _featureRegistry = new();
@@ -31,7 +31,6 @@ public class HarmonyPatchController
     #endregion
 
     #region 2. Professional Constructor
-
     public HarmonyPatchController(string harmonyId, string namespacePrefix)
     {
         if (string.IsNullOrEmpty(harmonyId)) throw new ArgumentNullException(nameof(harmonyId));

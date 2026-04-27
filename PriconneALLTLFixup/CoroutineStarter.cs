@@ -11,8 +11,7 @@ namespace PriconneALLTLFixup;
 public class CoroutineStarter : MonoBehaviour
 {
     #region 1. Thread-Safe Internal State
-
-    private static CoroutineStarter? _instance;
+    private static CoroutineStarter _instance;
     private static readonly object _syncRoot = new();
     private static int _mainThreadId;
 
@@ -23,16 +22,14 @@ public class CoroutineStarter : MonoBehaviour
     #endregion
 
     #region 2. Formal Properties & Events
-
-    public static event Action? OnFrameUpdate;
-    public static event Action? OnFrameLateUpdate;
-    public static event Action? OnFrameFixedUpdate;
+    public static event Action OnFrameUpdate;
+    public static event Action OnFrameLateUpdate;
+    public static event Action OnFrameFixedUpdate;
 
     public static bool IsMainThread => Environment.CurrentManagedThreadId == _mainThreadId;
     #endregion
 
     #region 3. Core Engine Initialization
-
     public static void SetupMainThread()
     {
         if (_mainThreadId != 0) return;
@@ -69,7 +66,6 @@ public class CoroutineStarter : MonoBehaviour
     #endregion
 
     #region 4. Logic Flow: Unity Lifecycle
-
     private void Update()
     {
         if (_pendingQueue.Count > 0)
@@ -101,7 +97,6 @@ public class CoroutineStarter : MonoBehaviour
     #endregion
 
     #region 5. Public API
-
     public static void Dispatch(Action action)
     {
         if (action == null) return;

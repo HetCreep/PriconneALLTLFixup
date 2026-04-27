@@ -48,11 +48,10 @@ public class Setting<T> : ISetting
     }
 }
 
-#nullable enable
 public class ToggleSetting : Setting<bool>
 {
-    public Type? TargetPatch { get; }
-    public ToggleSetting(string sec, string key, bool def, string desc, Type? patch = null)
+    public Type TargetPatch { get; }
+    public ToggleSetting(string sec, string key, bool def, string desc, Type patch = null)
         : base(sec, key, def, desc) { TargetPatch = patch; }
 
     public void Link(HarmonyPatchController controller)
@@ -64,7 +63,6 @@ public class ToggleSetting : Setting<bool>
         if (!Value) controller.Unpatch(TargetPatch);
     }
 }
-#nullable disable
 #endregion
 
 public static class ConfigurationManager
@@ -76,7 +74,6 @@ public static class ConfigurationManager
     internal static void NotifyChanged() => OnChanged?.Invoke();
 
     #region 1. Official Config Groups
-
     public static class Translation
     {
         private const string S = "1. Translation Engine";
@@ -123,11 +120,9 @@ public static class ConfigurationManager
         );
 
     }
-
     #endregion
 
     #region 2. Flow Control
-
     public static void Initialize(ConfigFile config)
     {
         Log.Info("[Config] Syncing configuration schema...");
