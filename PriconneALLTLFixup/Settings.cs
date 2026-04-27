@@ -1,0 +1,134 @@
+﻿using BepInEx.Configuration;
+using HarmonyLib;
+using System;
+using System.Collections.Generic;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+
+namespace PriconneALLTLFixup;
+
+#region Plugin Metadata
+public static class MyPluginInfo
+{
+    public const string Guid = "PriconneALLTLFixup";
+    public const string Name = "PriconneALLTLFixup by HetCreep";
+    public const string Author = "HetCreep";
+    public const string OriginalAuthor = "Dakari and Olegase";
+    public const string Version = "12.2.0";
+    public const string HarmonyGuid = "com.github.hetcreep.priconnealltlfixup";
+    public const string RepoUrl = "https://github.com/HetCreep/PriconneALLTLFixup";
+    public const string ProcessName = "PrincessConnectReDive.exe";
+}
+#endregion
+
+#region Core Configuration Logic
+public interface ISetting { void Bind(ConfigFile config); }
+
+public class Setting<T> : ISetting
+{
+    public ConfigEntry<T> Entry { get; protected set; } = null!;
+    public virtual T Value => (Entry != null) ? Entry.Value : DefaultValue;
+
+    public string Section { get; }
+    public string Key { get; }
+    public T DefaultValue { get; }
+    public string Description { get; }
+
+    public Setting(string section, string key, T defaultValue, string desc)
+    {
+        Section = section; Key = key; DefaultValue = defaultValue; Description = desc;
+        ConfigurationManager.InternalRegister(this);
+    }
+
+    public virtual void Bind(ConfigFile config)
+    {
+        Entry = config.Bind(Section, Key, DefaultValue, new ConfigDescription(Description));
+        Entry.SettingChanged += (s, e) => ConfigurationManager.NotifyChanged();
+    }
+}
+
+public class ToggleSetting : Setting<bool>
+{
+    public Type? TargetPatch { get; }
+    public ToggleSetting(string sec, string key, bool def, string desc, Type? patch = null)
+        : base(sec, key, def, desc) { TargetPatch = patch; }
+
+    public void Link(HarmonyPatchController controller)
+    {
+        if (TargetPatch == null || Entry == null) return;
+        Entry.SettingChanged += (s, e) => {
+            if (Value) controller.Patch(TargetPatch); else controller.Unpatch(TargetPatch);
+        };
+        if (!Value) controller.Unpatch(TargetPatch);
+    }
+}
+#endregion
+
+public static class ConfigurationManager
+{
+    private static readonly List<ISetting> _registry = new(16);
+    public static event Action? OnChanged;
+
+    internal static void InternalRegister(ISetting s) => _registry.Add(s);
+    internal static void NotifyChanged() => OnChanged?.Invoke();
+
+    #region 1. Official Config Groups
+
+    public static class Translation
+    {
+        private const string S = "1. Translation Engine";
+
+        public static readonly Setting<string> Code = new(
+            S, "LanguageCode", "en", "ISO 639-1 Code");
+
+    }
+
+    public static class UI
+    {
+        private const string S = "2. User Interface";
+
+    }
+
+    public static class Gameplay
+    {
+        private const string S = "3. Gameplay Features";
+
+
+    }
+
+    public static class Core
+    {
+        private const string S = "4. System Core";
+
+        public static readonly ToggleSetting DebugMode = new(
+            S, "DeveloperLogs", false, "เปิดการบันทึก Log เชิงลึกสำหรับนักพัฒนา");
+
+        public static readonly Setting<string> Version = new(
+            S, "ModVersion", MyPluginInfo.Version, "ข้อมูลเวอร์ชันปัจจุบัน");
+    }
+    #endregion
+
+    #region 2. Flow Control
+
+    public static void Initialize(ConfigFile config)
+    {
+        Log.Info("[Config] Syncing configuration schema...");
+
+        var groups = typeof(ConfigurationManager).GetNestedTypes(BindingFlags.Public | BindingFlags.Static);
+        foreach (var group in groups) RuntimeHelpers.RunClassConstructor(group.TypeHandle);
+
+        config.SaveOnConfigSet = true;
+        foreach (var s in _registry) s.Bind(config);
+
+        Log.Info($"[Config] Successfully loaded {_registry.Count} parameters.");
+    }
+
+    public static void SynchronizePatches(HarmonyPatchController controller)
+    {
+        foreach (var s in _registry)
+        {
+            if (s is ToggleSetting toggle) toggle.Link(controller);
+        }
+    }
+    #endregion
+}   
