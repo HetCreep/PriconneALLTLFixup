@@ -59,38 +59,4 @@ Every line of code follows these strict rules:
 ### 👨‍💻 Developer Notes
 This project uses **Background Deployment** via `HarmonyPatchController` to ensure the game starts smoothly without blocking the main thread, regardless of the complexity of the loaded translation assets.
 
-*Developed with ❤️ to bring a seamless Princess Connect experience to the global community.*1. **Strict Performance**: Zero resource wastage in high-frequency loops.
-2. **Clean Architecture**: Logical separation of concerns (Refactored 10+ files into 4).
-3. **Advanced C#**: Utilizing `Span<T>`, `MethodInlining`, and `HashSet<T>` for O(1) complexity.
-4. **Static Registry**: Centralized patch and configuration management.
-5. **Thread Safety**: Robust `lock` mechanisms for all cache and dictionary operations.
-6. **Comprehensive Logging**: Detailed diagnostics with **Developer Context** support.
-7. **Defensive Programming**: Proactive `Util.IsSafe()` checks on all Unity objects.
-8. **Adaptive UI**: Dynamic logic to handle Thai text length and layout changes.
-9. **Minimal Boilerplate**: Consolidated redundant hooks into unified modules.
-10. **Professional Documentation**: Code and documentation built for enterprise standards.
-
----
-
-## ⚙️ Configuration Highlights
-| Group | Setting | Description |
-| :--- | :--- | :--- |
-| **Core** | `EnableTranslatorSync` | **Master Switch** for the entire translation engine. |
-| **Translation** | `LanguageCode` | Standard ISO code (e.g., `th`, `en`). |
-| **Translation** | `EnableTranslationRepair` | Fixes corrupted color/gradient tags automatically. |
-| **UI** | `EnableSmartSkillLayout` | Toggles the intelligent skill description grouping. |
-| **Core** | `DisplayMode` | 0: Fullscreen, 1: Borderless, 2: Maximized (For some OS), 3: Windowed. |
-
----
-
-## 🚀 Tech Stack
-- **BepInEx 6 (IL2CPP)**: The modern modding framework.
-- **HarmonyX**: For high-efficiency runtime patching.
-- **XUnity.AutoTranslator**: Base translation engine integration.
-- **Win32 API Bridge**: Native window style control.
-
----
-### 👨‍💻 Developer Notes
-This project uses **Background Deployment** via `HarmonyPatchController` to ensure the game starts smoothly without blocking the main thread during patch registration.
-
-*Developed with ❤️ to bring the best Princess Connect experience to the community.*
+*Developed with ❤️ to bring a seamless Princess Connect experience to the global community.*
