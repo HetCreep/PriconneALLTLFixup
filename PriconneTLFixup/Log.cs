@@ -1,96 +1,74 @@
-﻿using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using BepInEx.Logging;
+using System;
+using System.IO;
+using System.Runtime.CompilerServices;
+using System.Text;
 
-namespace PriconneTLFixup;
+namespace PriconneALLTLFixup;
 
-public class Log
+public static class Log
 {
-    internal static ManualLogSource? BieLogger;
+    #region 1. Internal Infrastructure
+    private static ManualLogSource? _internalSource;
 
-#if DEBUG
-    private static void _Log(string message, LogLevel logLevel, string filePath, string member, int line)
+    public static bool IsActive => _internalSource != null;
+
+    public static bool IsDeveloperContext => ConfigurationManager.Core.DebugMode.Value;
+    #endregion
+
+    #region 2. System Integration
+
+    internal static void Initialize(ManualLogSource source)
     {
-        var pathParts = filePath.Split('\\');
-        var className = pathParts[^1].Replace(".cs", "");
-        var caller = new StackFrame(3, true).GetMethod()?.Name;
-        var prefix = $"[{caller}->{className}.{member}:{line}]: ";
-        BieLogger?.Log(logLevel, $"{prefix}{message}");
+        if (_internalSource != null) return;
+        _internalSource = source;
+    }
+    #endregion
+
+    #region 3. General Logging API (User & General)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Info(object msg) => Dispatch(LogLevel.Info, msg);
+
+    public static void Info(string template, params object[] args)
+    {
+        if (args == null || args.Length == 0) { Dispatch(LogLevel.Info, template); return; }
+        try { Dispatch(LogLevel.Info, string.Format(template, args)); }
+        catch { Dispatch(LogLevel.Info, $"[FormatErr] {template}"); }
     }
 
-    public static void Debug(string message, [CallerFilePath] string filePath = "",
-        [CallerMemberName] string member = "", [CallerLineNumber] int line = 0)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Warn(object msg) => Dispatch(LogLevel.Warning, msg);
+
+    public static void Error(object msg, Exception? ex = null)
     {
-        _Log(message, LogLevel.Debug, filePath, member, line);
+        if (ex != null) Dispatch(LogLevel.Error, $"{msg}\n[Trace]: {ex.Message}\n{ex.StackTrace}");
+        else Dispatch(LogLevel.Error, msg);
     }
 
-    public static void Info(string message, [CallerFilePath] string filePath = "",
-        [CallerMemberName] string member = "", [CallerLineNumber] int line = 0)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Fatal(object msg) => Dispatch(LogLevel.Fatal, msg);
+    #endregion
+
+    #region 4. Developer Diagnostics API
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Debug(object msg,
+        [CallerFilePath] string path = "",
+        [CallerMemberName] string method = "",
+        [CallerLineNumber] int line = 0)
     {
-        _Log(message, LogLevel.Info, filePath, member, line);
-    }
+        if (!IsDeveloperContext) return;
 
-    public static void Warn(string message, [CallerFilePath] string filePath = "",
-        [CallerMemberName] string member = "", [CallerLineNumber] int line = 0)
+        string file = Path.GetFileNameWithoutExtension(path);
+        Dispatch(LogLevel.Debug, $"[{file}@{line}] {method}: {msg}");
+    }
+    #endregion
+
+    #region 5. Internal Core Logic
+    private static void Dispatch(LogLevel level, object? message)
     {
-        _Log(message, LogLevel.Warning, filePath, member, line);
+        if (_internalSource == null) return;
+
+        _internalSource.Log(level, message ?? "<NULL_MSG>");
     }
-
-    public static void Error(string message, [CallerFilePath] string filePath = "",
-        [CallerMemberName] string member = "", [CallerLineNumber] int line = 0)
-    {
-        _Log(message, LogLevel.Error, filePath, member, line);
-    }
-#else
-		private static void _Log(string message, LogLevel logLevel)
-		{
-            BieLogger?.Log(logLevel, message);
-		}
-
-		public static void Debug(string message, bool evenInReleaseBuild)
-		{
-			_Log(message, LogLevel.Debug);
-		}
-
-		public static void Info(string message)
-		{
-			_Log(message, LogLevel.Info);
-		}
-
-		public static void Warn(string message)
-		{
-			_Log(message, LogLevel.Warning);
-		}
-
-		public static void Error(string message)
-		{
-			_Log(message, LogLevel.Error);
-		}
-#endif
-    [Conditional("DEBUG")]
-    public static void Debug(Exception exception)
-    {
-        BieLogger?.Log(LogLevel.Debug, exception);
-    }
-
-    [Conditional("DEBUG")]
-    public static void Debug(string message)
-    {
-        BieLogger?.Log(LogLevel.Debug, message);
-    }
-
-    public static void Info(Exception exception)
-    {
-        BieLogger?.Log(LogLevel.Info, exception);
-    }
-
-    public static void Warn(Exception exception)
-    {
-        BieLogger?.Log(LogLevel.Warning, exception);
-    }
-
-    public static void Error(Exception exception)
-    {
-        BieLogger?.Log(LogLevel.Error, exception);
-    }
+    #endregion
 }
