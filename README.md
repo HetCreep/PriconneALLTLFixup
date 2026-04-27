@@ -8,7 +8,7 @@
 In this phase, we have consolidated legacy patches into 4 robust modules to minimize boilerplate and maximize system stability:
 
 1. **`EngineBridgePatch`**: A critical link between the Unity Engine and XUnity.AutoTranslator. It handles AssetBundle unstripping (font protection) and enforces language synchronization policies.
-2. **`WindowCorePatch`**: An intelligent display management system. It supports Exclusive Fullscreen, Borderless, and Maximized modes, including native Win32 API integrations and standard hotkeys (F11 / Alt+Enter); The central lifecycle controller. It ensures all dependencies are loaded and the system is ready before initializing mod logic.
+2. **`WindowCorePatch`**: An intelligent display management system supporting Exclusive Fullscreen, Borderless, and Maximized modes with native Win32 API integration and standard hotkeys (F11 / Alt+Enter). Additionally, it serves as the **Central Lifecycle Controller**, ensuring all dependencies are loaded and the system is ready before mod logic initialization.
 3. **`TextSafetyPatch`**: The "Gatekeeper" layer. It prevents game crashes by intercepting null or destroyed UI objects before they reach the translation engine, ensuring 100% runtime safety.
 
 ---
