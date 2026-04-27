@@ -35,9 +35,9 @@ Display and system settings can be adjusted via the `.cfg` file.
 
 | Value | Mode | Description |
 | :--- | :--- | :--- |
-| **0** | **ExclusiveFullScreen** | Maximum performance for dedicated gaming. |
-| **1** | **FullScreenWindow** | **Borderless Window** (Default) - Seamless Alt-Tab. |
-| **2** | **MaximizedWindow** | Maximized window with Taskbar visibility. |
+| **0** | **FullScreen** | Maximum performance for dedicated gaming. |
+| **1** | **Window Borderless** | **Borderless Window** (Default) - Seamless Alt-Tab. |
+| **2** | **MaximizedWindow ((For some OS)** | Maximized window with Taskbar visibility. |
 | **3** | **Windowed** | Standard windowed mode based on custom size. |
 
 ---
