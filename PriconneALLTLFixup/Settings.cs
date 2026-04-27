@@ -28,7 +28,12 @@ public interface ISetting { void Bind(ConfigFile config); }
 public class Setting<T> : ISetting
 {
     public ConfigEntry<T> Entry { get; protected set; } = null!;
-    public virtual T Value => (Entry != null) ? Entry.Value : DefaultValue;
+
+    public T Value
+    {
+        get => Entry != null ? Entry.Value : DefaultValue;
+        set { if (Entry != null) Entry.Value = value; }
+    }
 
     public string Section { get; }
     public string Key { get; }
@@ -81,13 +86,21 @@ public static class ConfigurationManager
         public static readonly Setting<string> Code = new(
             S, "LanguageCode", "en", "ISO 639-1 Code");
 
+        public static readonly ToggleSetting TranslationRepair = new(
+            S, "EnableTranslationRepair", true,
+            "เปิดใช้งานการซ่อมแซม Tag สีและ Gradient ที่เสียหายจากการแปลอัตโนมัติ",
+            typeof(Patches.TranslationCorePatch));
+
     }
 
     public static class UI
     {
         private const string S = "2. User Interface";
 
-        
+        public static readonly ToggleSetting SmartSkillLayout = new(
+            S, "EnableSmartSkillLayout", true,
+            "เปิดใช้งานการจัดกลุ่มข้อความสกิลให้อ่านง่ายขึ้น (ยุบบรรทัดที่ซ้ำซ้อน)",
+            typeof(Patches.TextRegistryPatch));
     }
 
 
@@ -111,14 +124,19 @@ public static class ConfigurationManager
         public static readonly ToggleSetting SystemIntegration = new(
             S, "EnableSystemEnvironment", false,
             "เปิดใช้งานการปรับแต่งหน้าต่างและคีย์ลัด F11 หรือ Alt+Enter",
-            typeof(Patches.DisplayModePatch)
+            typeof(Patches.WindowCorePatch)
         );
 
         public static readonly Setting<FullScreenMode> DisplayMode = new(
             S, "DisplayMode", FullScreenMode.FullScreenWindow,
-            "โหมดการแสดงผลที่ต้องการตามรูปภาพที่คุ้นตา: \n0 = FullScreen,\n1 = Window Borderless,\n2 = MaximizedWindow ((For some OS)),\n3 = Windowed"
+            "โหมดการแสดงผลที่ต้องการตามรูปภาพที่คุ้นตา: \n0 = FullScreen,\n1 = Window Borderless,\n2 = MaximizedWindow (For some OS)),\n3 = Windowed"
         );
 
+        public static readonly ToggleSetting TranslatorIntegration = new(
+            S, "EnableTranslatorSync", true,
+        "เปิดใช้งานการซิงค์รหัสภาษากับ XUnity.AutoTranslator",
+        typeof(Patches.EngineBridgePatch)
+        );
     }
     #endregion
 
@@ -144,4 +162,4 @@ public static class ConfigurationManager
         }
     }
     #endregion
-}   
+}

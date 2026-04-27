@@ -8,6 +8,7 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using UnityEngine;
@@ -92,111 +93,166 @@ public static class Util
     }
     #endregion
 
-    #region MODULE C: Integration & Sync Engine (XUAT)
-    private static object _xuatRef;
-    private static Func<object, bool> _isXuatActive;
-    private static Func<object, float> _xuatDelayGetter;
-    private static bool _xuatInited;
+    #region MODULE C: Integration & Sync Engine (XUAT Bridge)
+    private static object _xuatInstance;
+    private static object _xuatSettings;
 
-    private static void EnsureXuatConnection()
+    private static Func<object, bool> _xuatModeGetter;
+    private static Func<object, float> _xuatDelayGetter;
+    private static Action<object, string> _xuatLanguageSetter;
+    private static Func<object, string> _xuatLanguageGetter;
+
+    private static bool _isXuatLinked;
+
+    private static void LinkTranslationEngine()
     {
-        if (_xuatInited) return;
+        if (_isXuatLinked) return;
         lock (_globalSync)
         {
-            if (_xuatInited) return;
+            if (_isXuatLinked) return;
             try
             {
-                var plugin = IL2CPPChainloader.Instance.Plugins.Values.FirstOrDefault(p => p.Metadata.GUID.Contains("autotranslator"));
-                if (plugin?.Instance == null) return;
+                var plugin = IL2CPPChainloader.Instance.Plugins.Values
+                    .FirstOrDefault(p => p.Metadata.GUID.Contains("autotranslator"));
 
-                _xuatRef = plugin.Instance;
-                var type = _xuatRef.GetType();
+                if (plugin?.Instance == null) return;
+                _xuatInstance = plugin.Instance;
+                var type = _xuatInstance.GetType();
+
+                _xuatSettings = type.GetProperty("Settings", UniversalFlags)?.GetValue(_xuatInstance);
+
+                if (_xuatSettings != null)
+                {
+                    var langProp = _xuatSettings.GetType().GetProperty("Language", UniversalFlags);
+                    if (langProp != null)
+                    {
+                        _xuatLanguageGetter = obj => langProp.GetValue(_xuatSettings)?.ToString();
+                        _xuatLanguageSetter = (obj, val) => langProp.SetValue(_xuatSettings, val);
+                    }
+                }
 
                 var fieldMode = type.GetField("_isInTranslatedMode", UniversalFlags);
-                if (fieldMode != null) _isXuatActive = CreateAccessor<bool>(fieldMode);
+                if (fieldMode != null) _xuatModeGetter = CreateAccessor<bool>(fieldMode);
 
-                var manager = type.GetProperty("TranslationManager", UniversalFlags)?.GetValue(_xuatRef);
+                var manager = type.GetProperty("TranslationManager", UniversalFlags)?.GetValue(_xuatInstance);
                 var endpoint = manager?.GetType().GetProperty("CurrentEndpoint", UniversalFlags)?.GetValue(manager);
                 var delayProp = endpoint?.GetType().GetProperty("TranslationDelay", UniversalFlags);
                 if (delayProp != null) _xuatDelayGetter = CreateAccessor<float>(delayProp);
 
-                Log.Info("[Integration] AutoTranslator synchronization established.");
+                Log.Info("[Bridge] XUAT High-performance link established.");
             }
-            catch (Exception ex) { Log.Debug($"[Integration] Reflection link failed: {ex.Message}"); }
-            finally { _xuatInited = true; }
+            catch (Exception ex) { Log.Debug($"[Bridge] Link failed: {ex.Message}"); }
+            finally { _isXuatLinked = true; }
         }
     }
 
-    public static bool IsExternalTranslationEnabled() { EnsureXuatConnection(); return _isXuatActive?.Invoke(_xuatRef!) ?? false; }
-    public static float GetExternalDelay() { EnsureXuatConnection(); return _xuatDelayGetter?.Invoke(_xuatRef!) ?? 0.5f; }
+    public static bool IsXuatActive() { LinkTranslationEngine(); return _xuatModeGetter?.Invoke(_xuatInstance) ?? false; }
+    public static float GetXuatDelay() { LinkTranslationEngine(); return _xuatDelayGetter?.Invoke(_xuatInstance) ?? 0.5f; }
+
+    public static void SyncXuatLanguage(string targetLang)
+    {
+        LinkTranslationEngine();
+        if (_xuatLanguageSetter == null) return;
+
+        string current = _xuatLanguageGetter?.Invoke(_xuatInstance);
+        if (!string.Equals(current, targetLang, StringComparison.OrdinalIgnoreCase))
+        {
+            _xuatLanguageSetter(_xuatInstance, targetLang);
+            Log.Info($"[Bridge] XUAT Language forced to: {targetLang}");
+        }
+    }
+
+    public static string GetXuatLanguage()
+    {
+        LinkTranslationEngine();
+        return _xuatLanguageGetter?.Invoke(_xuatInstance) ?? ConfigurationManager.Translation.Code.Value;
+    }
     #endregion
 
-    #region MODULE D: Asset Management & Font Fallback
+    #region MODULE D: Asset Management & Smart Font Fallback
     public static Font SharedMainFont { get; private set; }
-    private static readonly Dictionary<string, Font> _fontCache = new();
+
+    private static readonly List<UnityEngine.Object> _loadedFontAssets = new();
 
     public static void PreloadGlobalResources()
     {
         try
         {
             string lang = ConfigurationManager.Translation.Code.Value;
-
-            string bepInExRoot = Path.GetDirectoryName(Paths.ConfigPath) ?? "";
-
-            if (string.IsNullOrEmpty(bepInExRoot))
-            {
-                Log.Error("[Assets] Could not resolve BepInEx root path.");
-                return;
-            }
-
-            string fontDir = Path.Combine(bepInExRoot, "Translation", lang, "Font");
-
-            if (!Directory.Exists(fontDir))
-            {
-                Log.Warn($"[Assets] Translation directory missing: {fontDir}");
-                return;
-            }
+            string root = Path.GetDirectoryName(Paths.ConfigPath) ?? string.Empty;
+            string fontDir = Path.Combine(root, "Translation", lang, "Font");
 
             if (!Directory.Exists(fontDir)) return;
 
-            string charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?:;()[]+-*/=%$#@&_\"'<>|\\" +
-                             GetLanguageCharset(lang);
+            string charset = ExpandCharsetRange("A-Z a-z 0-9 .,!?:;()[]+-*/=%$#@&_\"'<>|\\ " + GetLanguageCharset(lang));
 
             foreach (var file in Directory.GetFiles(fontDir, "*.unity3d"))
             {
                 var bundle = AssetBundle.LoadFromFile(file);
-                var font = bundle.LoadAllAssets(Il2CppType.Of<Font>()).FirstOrDefault()?.Cast<Font>().Persistent();
-                if (font != null) { font.RequestCharactersInTexture(charset, 24); SharedMainFont ??= font; }
+                if (bundle == null) continue;
+
+                var font = bundle.LoadAllAssets(Il2CppType.Of<Font>()).FirstOrDefault()?.Cast<Font>();
+                if (font != null)
+                {
+                    font.Persistent();
+                    font.RequestCharactersInTexture(charset, 32, FontStyle.Normal);
+                    SharedMainFont ??= font;
+                }
+
+                var allAssets = bundle.LoadAllAssets();
+                foreach (var asset in allAssets) { asset.Persistent(); _loadedFontAssets.Add(asset); }
+
                 bundle.Unload(false);
             }
-            Log.Info($"[Assets] Global preloading complete for: {lang}");
+            Log.Info($"[Assets] Global preloading complete. ({_loadedFontAssets.Count} assets)");
         }
-        catch (Exception ex)
+        catch (Exception ex) { Log.Error("Global font preloading failed.", ex); }
+    }
+
+    private static string ExpandCharsetRange(string input)
+    {
+        StringBuilder sb = new();
+        for (int i = 0; i < input.Length; i++)
         {
-            Log.Error("An error occurred during global resource preloading.", ex);
+            if (i + 2 < input.Length && input[i + 1] == '-')
+            {
+                for (char c = input[i]; c <= input[i + 2]; c++) sb.Append(c);
+                i += 2;
+            }
+            else sb.Append(input[i]);
         }
+        return sb.ToString();
     }
 
     private static string GetLanguageCharset(string lang) => lang switch
     {
         "th" => "\u0E01-\u0E7F",
-        "ru" => "\u0400-\u04FF",
         "ja" => "\u3040-\u30FF\u4E00-\u9FFF",
+        "ru" => "\u0400-\u04FF",
         "vi" or "vn" => "\u00C0-\u1EF9",
         _ => ""
     };
 
     public static void RegisterFallback(UnityEngine.Object main, UnityEngine.Object fallback)
     {
-        if (main == null || fallback == null) return;
+        if (!main.IsSafe() || !fallback.IsSafe()) return;
         try
         {
-            var table = main.GetType().GetProperty("fallbackFontAssetTable", UniversalFlags)?.GetValue(main);
+            var tableProp = main.GetType().GetProperty("fallbackFontAssetTable", UniversalFlags);
+            var table = tableProp?.GetValue(main);
             if (table == null) return;
-            var contains = (bool)table.GetType().GetMethod("Contains")!.Invoke(table, new[] { fallback })!;
-            if (!contains) table.GetType().GetMethod("Add")!.Invoke(table, new[] { fallback });
+
+            var containsMethod = table.GetType().GetMethod("Contains", UniversalFlags);
+            bool alreadyHas = (bool)containsMethod.Invoke(table, new[] { fallback });
+
+            if (!alreadyHas)
+            {
+                var addMethod = table.GetType().GetMethod("Add", UniversalFlags);
+                addMethod?.Invoke(table, new[] { fallback });
+                Log.Debug($"[Assets] Linked fallback: {fallback.name} -> {main.name}");
+            }
         }
-        catch { }
+        catch { /*  */ }
     }
     #endregion
 
@@ -256,5 +312,5 @@ public static class Util
         };
         return Expression.Lambda<Func<object, TR>>(Expression.Convert(body, typeof(TR)), param).Compile();
     }
-    #endregion
+    #endregion        
 }

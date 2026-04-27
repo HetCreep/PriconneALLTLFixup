@@ -4,6 +4,7 @@ using HarmonyLib;
 using System;
 using System.Diagnostics;
 using System.Linq;
+using XUnity.AutoTranslator.Plugin.Core;
 
 namespace PriconneALLTLFixup;
 
@@ -17,6 +18,7 @@ public class Plugin : BasePlugin
 
     #region 2. Global Accessor
     public static Plugin Instance { get; private set; } = null!;
+    public static XUnity.AutoTranslator.Plugin.Core.AutoTranslationPlugin AutoTranslatorPlugin;
     #endregion
 
     #region 3. Lifecycle Management (Load/Unload)
