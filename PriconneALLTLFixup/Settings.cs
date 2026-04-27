@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using UnityEngine;
 
 namespace PriconneALLTLFixup;
 
@@ -47,6 +48,7 @@ public class Setting<T> : ISetting
     }
 }
 
+#nullable enable
 public class ToggleSetting : Setting<bool>
 {
     public Type? TargetPatch { get; }
@@ -62,12 +64,13 @@ public class ToggleSetting : Setting<bool>
         if (!Value) controller.Unpatch(TargetPatch);
     }
 }
+#nullable disable
 #endregion
 
 public static class ConfigurationManager
 {
     private static readonly List<ISetting> _registry = new(16);
-    public static event Action? OnChanged;
+    public static event Action OnChanged;
 
     internal static void InternalRegister(ISetting s) => _registry.Add(s);
     internal static void NotifyChanged() => OnChanged?.Invoke();
@@ -87,7 +90,9 @@ public static class ConfigurationManager
     {
         private const string S = "2. User Interface";
 
+        
     }
+
 
     public static class Gameplay
     {
@@ -101,11 +106,24 @@ public static class ConfigurationManager
         private const string S = "4. System Core";
 
         public static readonly ToggleSetting DebugMode = new(
-            S, "DeveloperLogs", false, "เปิดการบันทึก Log เชิงลึกสำหรับนักพัฒนา");
+            S,"DeveloperLogs", false, "เปิดการบันทึก Log เชิงลึกสำหรับนักพัฒนา");
 
         public static readonly Setting<string> Version = new(
             S, "ModVersion", MyPluginInfo.Version, "ข้อมูลเวอร์ชันปัจจุบัน");
+
+        public static readonly ToggleSetting SystemIntegration = new(
+            S, "EnableSystemEnvironment", false,
+            "เปิดใช้งานการปรับแต่งหน้าต่างและคีย์ลัด F11 หรือ Alt+Enter",
+            typeof(Patches.DisplayModePatch)
+        );
+
+        public static readonly Setting<FullScreenMode> DisplayMode = new(
+            S, "DisplayMode", FullScreenMode.FullScreenWindow,
+            "โหมดการแสดงผลที่ต้องการตามรูปภาพที่คุ้นตา: \n0 = FullScreen,\n1 = Window Borderless,\n2 = MaximizedWindow ((For some OS)),\n3 = Windowed"
+        );
+
     }
+
     #endregion
 
     #region 2. Flow Control
