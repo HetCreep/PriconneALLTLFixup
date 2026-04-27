@@ -1,4 +1,4 @@
-﻿# PriconneTLFixup
+﻿# PriconneALLTLFixup
 
 Fixes a couple issues when using XUAT with Priconne, as well as adding QoL features.
 
@@ -20,7 +20,7 @@ Fixes a couple issues when using XUAT with Priconne, as well as adding QoL featu
 
 ## Contributing
 
-To set up the development environment, create a file called `PriconneTLFixup.csproj.user` with the following content, and enter the path where your game is installed:
+To set up the development environment, create a file called `PriconneALLTLFixup.csproj.user` with the following content, and enter the path where your game is installed:
 
 ```
 <?xml version="1.0" encoding="utf-8"?>
