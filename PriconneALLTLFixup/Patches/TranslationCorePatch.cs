@@ -1,24 +1,25 @@
-﻿using System;
+﻿using BepInEx;
+using Elements;
+using Fastenshtein;
+using HarmonyLib;
+using PriconneALLTLFixup;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
-using BepInEx;
-using Elements;
-using Fastenshtein;
-using HarmonyLib;
 using XUnity.AutoTranslator.Plugin.Core;
-using PriconneALLTLFixup;
 
 namespace PriconneALLTLFixup.Patches;
 
 [HarmonyPatch]
 public static class TranslationCorePatch
 {
-    #region 1. Internal Models & State Management
+    #region 1. Internal Models & State
     private static readonly object _syncLock = new();
+
     internal static readonly Dictionary<string, string[]> NameDict = new();
 
     private static bool _isTranslationSuppressed = false;
@@ -35,25 +36,9 @@ public static class TranslationCorePatch
     private static readonly Regex ColorRegex = new(@"[\[\(]([0-9A-Fa-fsS]{6,10})[\]\)]", RegexOptions.Compiled);
     private static readonly Regex GradientRegex = new(@"[\[\(]([0-9A-Fa-f,sS\s]{13,20})[\]\)]", RegexOptions.Compiled);
     private static readonly Regex PlaceholderHallucinationRegex = new(@"[\[\(](\s*\d+\s*)[\]\)]", RegexOptions.Compiled);
-
-    internal struct TranslatableString
-    {
-        public string Original;
-        public string Translated;
-        public int Index;
-        public int? SubIndex;
-
-        public TranslatableString(string original, int index)
-        {
-            Original = original;
-            Index = index;
-            Translated = null;
-            SubIndex = null;
-        }
-    }
     #endregion
 
-    #region 2. Module A: Preprocessor & Repair (SetText Interceptor)
+    #region 2. Module A: Preprocessor & Repair (SetText)
     [HarmonyTargetMethod]
     public static MethodBase TargetSetText() => AccessTools.Method("XUnity.AutoTranslator.Plugin.Core.AutoTranslationPlugin:SetText");
 
@@ -62,7 +47,6 @@ public static class TranslationCorePatch
     public static bool PrefixSetText(ref string text, string originalText)
     {
         if (_isTranslationSuppressed) return false;
-
         if (string.IsNullOrEmpty(originalText) || string.IsNullOrEmpty(text) || text == originalText) return true;
 
         text = text.Sanitize();
@@ -92,8 +76,6 @@ public static class TranslationCorePatch
         {
             string originVal = om.Value;
             var currentMatches = regex.Matches(currentText);
-            Levenshtein lev = null;
-
             foreach (Match cm in currentMatches)
             {
                 string corruptedVal = cm.Value;
@@ -106,8 +88,7 @@ public static class TranslationCorePatch
                     continue;
                 }
 
-                lev ??= new Levenshtein(originVal);
-                if (lev.DistanceFrom(corruptedVal) <= threshold)
+                if (new Levenshtein(originVal).DistanceFrom(corruptedVal) <= threshold)
                 {
                     currentText = currentText.Replace(corruptedVal, originVal);
                 }
@@ -127,71 +108,60 @@ public static class TranslationCorePatch
     }
     #endregion
 
-    #region 3. Module B: Dictionary & Unit Search
-    [HarmonyPatch(typeof(UnitSort), "MatchSearchFilter")]
-    [HarmonyPrefix]
-    public static bool PrefixSearchFilter(ref bool __result, string _source, string _filter)
-    {
-        if (NameDict.Count == 0) InitializeNameDict();
-        if (!NameDict.TryGetValue(_source, out var variants)) return true;
-
-        string filterLower = _filter.ToLower();
-        if (filterLower == "fav")
-        {
-            __result = IsFavorited(_source);
-            return false;
-        }
-
-        foreach (string variant in variants)
-        {
-            string vLower = variant.ToLower();
-            if (StringUtil.StartsWith(vLower, filterLower, true, UnitDefine.UNIT_SEARCH_REMOVE_STRING, UnitDefine.UnitNameSearchSplitString) ||
-                StringUtil.StartsWith(vLower.Replace(" ", ""), filterLower.Replace(" ", ""), true, UnitDefine.UNIT_SEARCH_REMOVE_STRING, UnitDefine.UnitNameSearchSplitString))
-            {
-                __result = true;
-                return false;
-            }
-        }
-
-        __result = false;
-        return false;
-    }
-
-    private static void InitializeNameDict()
+    #region 3. Module B: Dictionary Data Loader
+    public static void InitializeNameDict()
     {
         string path = GetDictPath();
         if (!File.Exists(path)) return;
+
         try
         {
-            foreach (var line in File.ReadLines(path))
+            lock (_syncLock)
             {
-                var parts = line.Split('=');
-                if (parts.Length != 2) continue;
-                NameDict[parts[0]] = parts[1].Split(';')
-                    .Where(v => v.Length > 0 && !v.Equals("christmas", StringComparison.OrdinalIgnoreCase))
-                    .ToArray();
+                NameDict.Clear();
+                foreach (var line in File.ReadLines(path))
+                {
+                    if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#")) continue;
+                    var parts = line.Split('=', 2);
+                    if (parts.Length != 2) continue;
+
+                    string jpKey = parts[0].Trim();
+                    string[] aliases = parts[1].Split(';')
+                        .Select(v => v.Trim())
+                        .Where(v => v.Length > 0)
+                        .ToArray();
+
+                    if (aliases.Length > 0) NameDict[jpKey] = aliases;
+                }
             }
+            Log.Info($"[Dict] Ready: {NameDict.Count} unit name mappings loaded.");
         }
-        catch { }
-    }
-
-    private static bool IsFavorited(string unitName)
-    {
-        var userData = Singleton<UserData>.Instance;
-        if (!Util.IsSafe(userData)) return false;
-
-        foreach (var param in userData.UnitParameterDictionary._values)
-        {
-            if (param.MasterData.UnitName == unitName) return param.UniqueData.FavoriteFlag == 1;
-        }
-        return false;
+        catch { /*  */ }
     }
     #endregion
 
-    #region 4. Module C: Flow Control (Toggle & Kill-Switch)
+    #region 4. Module C: Master Toggle & Flow Control
+    [HarmonyPatch(typeof(AutoTranslationPlugin), "ToggleTranslation")]
+    [HarmonyPostfix]
+    [HarmonyWrapSafe]
+    public static void PostfixToggle()
+    {
+        bool isActive = Util.IsXuatActive();
+        if (!isActive)
+        {
+            TextRegistryPatch.ClearCache();
+            NameDict.Clear();
+        }
+        else
+        {
+            InitializeNameDict();
+        }
+        Log.Info($"[Toggle] Translation Engine Sync: {isActive}");
+    }
+
     [HarmonyPatch(typeof(LoadIndexReceiveParam), "ParseLoadIndexReceiveParam")]
     [HarmonyPostfix]
-    public static void PostfixDetection(LoadIndexReceiveParam __instance)
+    public static void PostfixPartyDetection(LoadIndexReceiveParam __instance)
     {
         if (!Util.IsSafe(__instance?.UserMyParty) || __instance.UserMyParty.Count == 0) return;
 
@@ -200,23 +170,10 @@ public static class TranslationCorePatch
             if (PestStrings.Contains(ApplyRot13(party.PartyName)))
             {
                 _isTranslationSuppressed = true;
-                Log.Warn("[Control] Anti-detection triggered. Translation suppressed for safety.");
+                Log.Warn("[Control] Anti-detection triggered.");
                 break;
             }
         }
-    }
-
-    [HarmonyPatch(typeof(AutoTranslationPlugin), "ToggleTranslation")]
-    [HarmonyPostfix]
-    [HarmonyWrapSafe]
-    public static void PostfixToggle(AutoTranslationPlugin __instance)
-    {
-        if (__instance == null) return;
-        bool isActive = Util.IsXuatActive();
-
-        if (!isActive) TextRegistryPatch.ClearCache();
-
-        Log.Info($"[Toggle] Global Translation State: {isActive}");
     }
 
     private static string ApplyRot13(string input)
@@ -227,6 +184,6 @@ public static class TranslationCorePatch
             int start = char.IsUpper(c) ? 'A' : 'a';
             return ((char)((c - start + 13) % 26 + start)).ToString();
         });
-    }
+    }    
     #endregion
 }

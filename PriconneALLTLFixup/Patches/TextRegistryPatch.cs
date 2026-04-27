@@ -13,7 +13,7 @@ namespace PriconneALLTLFixup.Patches;
 [HarmonyPatch]
 public static class TextRegistryPatch
 {
-    #region 1. Internal Models & State
+    #region 1. Internal Models & State Management
     private static readonly object _syncLock = new();
 
     internal static readonly Dictionary<eTextId, string> OriginalStrings = new();
@@ -48,12 +48,18 @@ public static class TextRegistryPatch
     public static void PostfixLoadConstText()
     {
         string path = GetOtherFilePath("text_id.txt");
-        if (!File.Exists(path)) return;
+
+        if (!File.Exists(path))
+        {
+            Log.Error($"[Registry] CRITICAL: 'text_id.txt' not found at {path}. Static text mapping is now ABORTED.");
+            return;
+        }
 
         var instance = Singleton<ConstTextData>.Instance;
         if (!Util.IsSafe(instance) || instance.scriptableObject == null) return;
 
         var scriptableObject = instance.scriptableObject;
+        var dict = scriptableObject.DataDictionary;
 
         try
         {
@@ -61,23 +67,34 @@ public static class TextRegistryPatch
             {
                 foreach (var line in File.ReadLines(path))
                 {
-                    var parts = line.Split('=');
-                    if (parts.Length != 2 || string.IsNullOrEmpty(parts[1])) continue;
+                    if (string.IsNullOrWhiteSpace(line)) continue;
 
-                    if (Enum.TryParse<eTextId>(parts[0], out var textId))
+                    var parts = line.Split('=', 2);
+                    if (parts.Length != 2) continue;
+
+                    string keyStr = parts[0].Trim();
+                    string valStr = parts[1];
+
+                    if (Enum.TryParse<eTextId>(keyStr, out var textId))
                     {
-                        OriginalStrings[textId] = scriptableObject.DataDictionary[textId];
+                        if (dict.ContainsKey(textId))
+                        {
+                            OriginalStrings[textId] = dict[textId];
 
-                        string sanitizedVal = parts[1].Sanitize();
-                        TranslatedStrings[textId] = sanitizedVal;
+                            string sanitizedVal = valStr.Sanitize();
+                            TranslatedStrings[textId] = sanitizedVal;
 
-                        scriptableObject.DataDictionary[textId] = sanitizedVal;
+                            dict[textId] = sanitizedVal;
+                        }
                     }
                 }
             }
-            Log.Info($"[Registry] Global Text ID Mapping complete. ({TranslatedStrings.Count} items)");
+            Log.Info($"[Registry] Static text mapping successfully loaded for: {ConfigurationManager.Translation.Code.Value}");
         }
-        catch (Exception ex) { Log.Error("ConstText mapping failed", ex); }
+        catch (Exception ex)
+        {
+            Log.Error($"[Registry] Runtime error during text mapping: {ex.Message}");
+        }
     }
     #endregion
 

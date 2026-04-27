@@ -10,7 +10,7 @@ namespace PriconneALLTLFixup.Patches;
 [HarmonyPatch]
 public static class EngineBridgePatch
 {
-    #region 1. Engine Integrity
+    #region 1. Engine Integrity (Font Protection)
     [HarmonyPatch(typeof(AssetBundle), nameof(AssetBundle.LoadAsset), typeof(string), typeof(Il2CppSystem.Type))]
     [HarmonyPrefix]
     [HarmonyWrapSafe]
@@ -29,12 +29,8 @@ public static class EngineBridgePatch
                     return false;
                 }
             }
-            catch (Exception ex)
-            {
-                Log.Debug($"[Bridge] Asset redirection failed: {name} | {ex.Message}");
-            }
+            catch (Exception ex) { Log.Debug($"[Bridge] Asset redirection failed: {name} | {ex.Message}"); }
         }
-
         return true;
     }
 
@@ -50,22 +46,34 @@ public static class EngineBridgePatch
     }
     #endregion
 
-    #region 2. XUAT Synchronization
+    #region 2. XUAT Synchronization & Policy
     [HarmonyPatch(typeof(AutoTranslationPlugin), "Initialize")]
     [HarmonyPostfix]
     [HarmonyWrapSafe]
     public static void PostfixXUAT(AutoTranslationPlugin __instance)
     {
         if (__instance == null) return;
-
         Plugin.AutoTranslatorPlugin = __instance;
 
         if (!ConfigurationManager.Core.TranslatorIntegration.Value) return;
 
-        Log.Info("[XUAT] Translation engine bridge established.");
+        Log.Info("[Bridge] XUAT High-performance link established.");
 
+        SyncLanguagePolicy();
         SynchronizeEngineTelemetry(__instance);
-        EnforceLanguagePolicy(__instance);
+    }
+
+    private static void SyncLanguagePolicy()
+    {
+        string xuatLang = Util.GetXuatLanguage();
+
+        if (!string.IsNullOrEmpty(xuatLang))
+        {
+            ConfigurationManager.Translation.Code.Value = xuatLang;
+            Log.Info($"[Bridge] Language synchronized to: {xuatLang}");
+
+            Util.SyncXuatLanguage(ConfigurationManager.Translation.Code.Value);
+        }
     }
 
     private static void SynchronizeEngineTelemetry(AutoTranslationPlugin instance)
@@ -79,37 +87,10 @@ public static class EngineBridgePatch
             {
                 var endpointId = endpoint.GetType().GetProperty("Endpoint", Util.UniversalFlags)?.GetValue(endpoint);
                 var delay = endpoint.GetType().GetProperty("TranslationDelay", Util.UniversalFlags)?.GetValue(endpoint);
-
                 Log.Info($"[XUAT] Active Endpoint: {endpointId} | Latency: {delay}s");
             }
-            else
-            {
-                Log.Warn("[XUAT] No active translation endpoint detected.");
-            }
         }
-        catch (Exception ex) { Log.Debug($"[XUAT] Telemetry acquisition bypassed: {ex.Message}"); }
-    }
-
-    private static void EnforceLanguagePolicy(AutoTranslationPlugin instance)
-    {
-        try
-        {
-            string targetLang = ConfigurationManager.Translation.Code.Value;
-            var settings = instance.GetType().GetProperty("Settings", Util.UniversalFlags)?.GetValue(instance);
-            var langProp = settings?.GetType().GetProperty("Language", Util.UniversalFlags);
-
-            if (langProp != null && langProp.CanWrite)
-            {
-                string currentLang = langProp.GetValue(settings)?.ToString();
-
-                if (!string.Equals(currentLang, targetLang, StringComparison.OrdinalIgnoreCase))
-                {
-                    langProp.SetValue(settings, targetLang);
-                    Log.Info($"[XUAT] Language Policy Enforced: Forced sync to '{targetLang}'");
-                }
-            }
-        }
-        catch (Exception ex) { Log.Debug($"[XUAT] Language sync interrupted: {ex.Message}"); }
+        catch { /*  */ }
     }
     #endregion
 }
