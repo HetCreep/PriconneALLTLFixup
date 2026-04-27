@@ -1,33 +1,57 @@
-﻿# PriconneALLTLFixup
+# ⚔️ PriconneALLTLFixup
 
-Fixes a couple issues when using XUAT with Priconne, as well as adding QoL features.
+**PriconneALLTLFixup** is a high-performance core system mod for *Princess Connect! Re:Dive* (PC/IL2CPP). Designed with a **"Performance First & Clean Architecture"** philosophy, this mod serves as the foundational framework for window management, engine integrity, and advanced Thai translation support.
 
-## Features
-- **Removes the typewriter effect** from all dialog, improving the speed and accuracy of the translation.
-- Enables you to **search units by their English name** in the unit list.
-- **Adds subtitles to all movies**, even if you downloaded them with audio. Usually they only show up if you download without voices.
-- **Translates subtitles and story before they are displayed**, so you don't have to wait for the translation to happen.
-- **Adds number separators** to most large numbers in the game, removing the need to count endless zeroes.
-- Allows you to **resize the game window to any size**, instead of being limited to 720p. Also enables the maximize button.
-- Automatically **closes the Sugoi translation backend terminal window** when you close the game, should you use that.
+---
 
-## Fixes
-- Fixes the monster detail window becoming unreadable after translation.
-- Fixes skill bubbles not disappearing after translation.
-- Fixes issues with story dialog not translating or even disappearing after the character name gets translated.
-- Fixes text overflowing various dialog boxes and speech bubbles.
-- Fixes various issues with font sizes.
+## 🛠️ Architecture: Phase 1 (Core Integrity)
+In this phase, we have consolidated legacy patches into 4 robust modules to minimize boilerplate and maximize system stability:
 
-## Contributing
+1. **`BootSystemPatch`**: The central lifecycle controller. It ensures all dependencies are loaded and the system is ready before initializing mod logic.
+2. **`EngineBridgePatch`**: A critical link between the Unity Engine and XUnity.AutoTranslator. It handles AssetBundle unstripping (font protection) and enforces language synchronization policies.
+3. **`WindowCorePatch`**: An intelligent display management system. It supports Exclusive Fullscreen, Borderless, and Maximized modes, including native Win32 API integrations and standard hotkeys (F11 / Alt+Enter).
+4. **`TextSafetyPatch`**: The "Gatekeeper" layer. It prevents game crashes by intercepting null or destroyed UI objects before they reach the translation engine, ensuring 100% runtime safety.
 
-To set up the development environment, create a file called `PriconneALLTLFixup.csproj.user` with the following content, and enter the path where your game is installed:
+---
 
-```
-<?xml version="1.0" encoding="utf-8"?>
-<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <PropertyGroup>
-    <!-- Change this path-->
-    <GameDir>C:\Users\YourUsername\priconner</GameDir>
-  </PropertyGroup>
-</Project>
-```
+## 📜 The 10 Project Commandments
+This project is developed under strict adherence to these 10 core rules:
+
+1. **Strict Performance Focus**: Zero resource wastage in high-frequency loops or frame updates.
+2. **Clean Code & Architecture**: Logical separation of concerns across all modules.
+3. **Advanced C# Features**: Utilizing `Span<T>`, `MethodInlining`, and Generics for maximum efficiency.
+4. **Static Registry Pattern**: Centralized, static registration for patches and configurations.
+5. **Thread Safety**: Proper locking and synchronization for cache and text processing.
+6. **Comprehensive Logging**: Multilevel logging (Info, Debug, Error) with developer context.
+7. **Defensive Programming**: Proactive null-checks and integrity validation at every entry point.
+8. **Adaptive UI Logic**: Dynamic calculation of UI scales and positions based on resolution.
+9. **Minimal Boilerplate**: Consolidating redundant code into streamlined, reusable logic.
+10. **Professional Documentation**: Enterprise-grade code structure with clear regions and comments.
+
+---
+
+## ⚙️ Configuration
+Display and system settings can be adjusted via the `.cfg` file.
+
+| Value | Mode | Description |
+| :--- | :--- | :--- |
+| **0** | **ExclusiveFullScreen** | Maximum performance for dedicated gaming. |
+| **1** | **FullScreenWindow** | **Borderless Window** (Default) - Seamless Alt-Tab. |
+| **2** | **MaximizedWindow** | Maximized window with Taskbar visibility. |
+| **3** | **Windowed** | Standard windowed mode based on custom size. |
+
+---
+
+## 🚀 Tech Stack
+- **BepInEx 6 (IL2CPP)**: The modding framework.
+- **HarmonyX**: For high-efficiency runtime patching.
+- **XUnity.AutoTranslator**: Base translation engine integration.
+- **Win32 API Bridge**: For OS-level window control and styles.
+
+---
+
+### 👨‍💻 Developer Notes
+This mod utilizes a **Background Deployment** system for patch registration, ensuring a non-blocking initialization process during game startup. For deep system diagnostics, please enable `DeveloperContext` in the configuration.
+
+---
+*Developed with ❤️ to bring the best Princess Connect experience.*
