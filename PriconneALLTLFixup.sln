@@ -1,6 +1,9 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PriconneTLFixup", "PriconneTLFixup\PriconneTLFixup.csproj", "{20903C8C-F41B-4FBC-8588-61D8183ACC57}"
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.37203.1
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PriconneALLTLFixup", "PriconneALLTLFixup.csproj", "{30FD194D-B281-4E20-86F6-6EAAE39C8E36}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -8,9 +11,15 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{20903C8C-F41B-4FBC-8588-61D8183ACC57}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{20903C8C-F41B-4FBC-8588-61D8183ACC57}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{20903C8C-F41B-4FBC-8588-61D8183ACC57}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{20903C8C-F41B-4FBC-8588-61D8183ACC57}.Release|Any CPU.Build.0 = Release|Any CPU
+		{30FD194D-B281-4E20-86F6-6EAAE39C8E36}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{30FD194D-B281-4E20-86F6-6EAAE39C8E36}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{30FD194D-B281-4E20-86F6-6EAAE39C8E36}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{30FD194D-B281-4E20-86F6-6EAAE39C8E36}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {D9624C22-5E67-4606-9A4B-724CC49F2225}
 	EndGlobalSection
 EndGlobal
