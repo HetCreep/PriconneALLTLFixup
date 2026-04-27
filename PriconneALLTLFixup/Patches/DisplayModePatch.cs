@@ -5,7 +5,6 @@ using Cute;
 
 namespace PriconneALLTLFixup.Patches;
 
-[HarmonyPatch(typeof(BootApp), "Start")]
 public static class DisplayModePatch
 {
     #region 1. Environment Constants (Win32 API)
@@ -22,29 +21,55 @@ public static class DisplayModePatch
     private static int _lastHeight = 720;
     #endregion
 
-    #region 3. Initialization
-    [HarmonyPostfix]
-    [HarmonyWrapSafe]
-    public static void InitializeDisplay()
+    #region 3. Harmony Patch EntryPoints
+    [HarmonyPatch(typeof(BootApp), "Start")]
+    public static class LifecyclePatch
     {
-        if (!ConfigurationManager.Core.SystemIntegration.Value)
+        [HarmonyPostfix]
+        [HarmonyWrapSafe]
+        public static void Postfix()
         {
-            Log.Debug("[Display] System integration is disabled via configuration.");
-            return;
+            if (!ConfigurationManager.Core.SystemIntegration.Value) return;
+
+            Log.Info("[Display] Synchronizing system integration components...");
+
+            ApplyWindowIntegrity();
+            ApplyTransition(isInitialLoad: true);
+
+            CoroutineStarter.OnFrameUpdate -= OnFrameUpdate;
+            CoroutineStarter.OnFrameUpdate += OnFrameUpdate;
         }
+    }
 
-        Log.Info("[Display] Harmonizing application environment...");
+    [HarmonyPatch(typeof(StandaloneWindowResize), "getOptimizedWindowSize")]
+    public static class InternalResolutionPatch
+    {
+        [HarmonyPrefix]
+        public static bool Prefix(StandaloneWindowResize __instance, ref Vector3 __result, int _width, int _height)
+        {
+            if (!ConfigurationManager.Core.SystemIntegration.Value) return true;
 
-        ApplyWindowIntegrity();
+            int finalW = (_width <= 128) ? __instance.windowLastWidth : _width;
+            int finalH = (_height <= 72) ? __instance.windowLastHeight : _height;
 
-        ApplyTransition(true);
+            float aspect = (float)finalW / finalH;
+            __result = new Vector3(finalW, finalH, aspect);
 
-        CoroutineStarter.OnFrameUpdate -= OnFrameUpdate;
-        CoroutineStarter.OnFrameUpdate += OnFrameUpdate;
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(StandaloneWindowResize), "DisableMaximizebox")]
+    public static class InternalMaximizePatch
+    {
+        public static bool Prefix()
+        {
+            return !ConfigurationManager.Core.SystemIntegration.Value;
+        }
     }
     #endregion
 
-    #region 4. Input Monitoring (Hotkeys)
+    #region 4. Operational Logic (Display & Input)
     private static void OnFrameUpdate()
     {
         if (_isTransitioning) return;
@@ -52,10 +77,7 @@ public static class DisplayModePatch
         bool requestToggle = Input.GetKeyDown(KeyCode.F11) ||
                            ((Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt)) && Input.GetKeyDown(KeyCode.Return));
 
-        if (requestToggle)
-        {
-            ApplyTransition(isInitialLoad: false);
-        }
+        if (requestToggle) ApplyTransition(false);
 
         if (!Screen.fullScreen && Screen.width < Screen.currentResolution.width * 0.95f)
         {
@@ -63,46 +85,30 @@ public static class DisplayModePatch
             _lastHeight = Screen.height;
         }
     }
-    #endregion
 
-    #region 5. Core Transition Engine (Unity Display)
     private static void ApplyTransition(bool isInitialLoad)
     {
         if (_isTransitioning) return;
         _isTransitioning = true;
-
         try
         {
             Resolution native = Screen.currentResolution;
-
             if (isInitialLoad || !Screen.fullScreen)
             {
                 FullScreenMode targetMode = ConfigurationManager.Core.DisplayMode.Value;
-
-                string familiarName = targetMode switch
-                {
-                    FullScreenMode.ExclusiveFullScreen => "Fullscreen",
-                    FullScreenMode.FullScreenWindow => "Window Borderless",
-                    FullScreenMode.MaximizedWindow => "Maximized Window",
-                    FullScreenMode.Windowed => "Windowed",
-                    _ => targetMode.ToString()
-                };
-
-                Log.Debug($"[Display] Transitioning to {familiarName}: {native.width}x{native.height}");
                 Screen.SetResolution(native.width, native.height, targetMode);
             }
             else
             {
-                Log.Debug($"[Display] Reverting to Windowed Mode: {_lastWidth}x{_lastHeight}");
                 Screen.SetResolution(_lastWidth, _lastHeight, FullScreenMode.Windowed);
             }
         }
-        catch (Exception ex) { Log.Error("Display mode transition failed", ex); }
+        catch (Exception ex) { Log.Error("Display transition encountered an error", ex); }
         finally { _isTransitioning = false; }
     }
     #endregion
 
-    #region 6. OS Integration Logic (Win32 Style)
+    #region 5. OS Integrity Operations (Win32)
     private static void ApplyWindowIntegrity()
     {
         try
@@ -115,10 +121,8 @@ public static class DisplayModePatch
 
             long exStyle = WindowsAPI.GetWindowLong(hWnd, GWL_EXSTYLE) | WS_EX_ACCEPTFILES;
             WindowsAPI.SetWindowLong(hWnd, GWL_EXSTYLE, exStyle);
-
-            Log.Debug("[System] Native window styles synchronized with OS.");
         }
-        catch (Exception ex) { Log.Debug($"[System] Window integrity check bypassed: {ex.Message}"); }
+        catch (Exception ex) { Log.Debug($"[System] Window integrity synchronization skipped: {ex.Message}"); }
     }
     #endregion
 }
