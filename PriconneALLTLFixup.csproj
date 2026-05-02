@@ -211,6 +211,15 @@
 			<InputAssemblies Include="$(OutputPath)$(TargetName).dll" />
 			<InputAssemblies Include="$(OutputPath)Fastenshtein.dll" />
 		</ItemGroup>
+		
+		<ILRepack
+			Parallel="true"
+			InputAssemblies="@(InputAssemblies)"
+			Internalize="true"
+			TargetKind="SameAsPrimaryAssembly"
+			OutputFile="$(OutputPath)$(TargetName).dll"
+			LibraryPath="$(BepInDir)\core;$(BepInDir)\interop;$(BepInDir)\plugins\XUnity.AutoTranslator" />
+
 		<ILRepack Parallel="true" InputAssemblies="@(InputAssemblies)" Internalize="true" TargetKind="SameAsPrimaryAssembly" OutputFile="$(OutputPath)$(TargetName).dll" />
 		<Delete Files="$(OutputPath)Fastenshtein.dll" />
 	</Target>
