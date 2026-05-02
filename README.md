@@ -1,47 +1,75 @@
-# ⚔️ PriconneALLTLFixup
+# PriconneALLTLFixup (Master Framework Edition)
 
-**PriconneALLTLFixup** is a high-performance, universal master framework for modding *Princess Connect! Re:Dive* (PC/IL2CPP). Designed with a focus on strict performance and absolute stability, this framework provides a robust foundation for global translation projects through an intelligent rule-based engine.
+An advanced performance optimization and localization repair framework for **Princess Connect! Re:Dive**, designed to work seamlessly with **XUnity.AutoTranslator** for Global and Private Server environments.
 
----
+## 🚀 Key Features
 
-## 🏗️ System Architecture (Consolidated Phases)
-The project is meticulously structured into logical phases to ensure clean separation of concerns and ease of maintenance:
+### 1. Smart Localization Engine
+- **Intelligent Language Fallback**: Automatically synchronizes with the XUAT engine. If no specific ISO 639-1 code is provided in the mod settings, it intelligently detects and follows the active translator's target language.
+- **De-coupled Execution**: Supports running the mod in one language (e.g., `th` for Thai fonts) while the game text is translated into another (e.g., `en` for English text) without any internal conflicts.
 
-### ⚙️ Phase 1: Core Integrity & Environment
-* **Advanced Window Management**: Full control over Fullscreen, Borderless, and Maximized modes via Native Win32 API.
-* **System Shortcuts**: Native support for `F11` (Toggle Fullscreen) and `Alt+Enter`.
-* **Engine Bridge**: An intelligent synchronization layer with *XUnity.AutoTranslator* (XUAT) that automatically handles language codes and engine states.
+### 2. Visual & Font Mastery
+- **Universal Font Redirection**: Globally overrides game fonts using AssetBundles and external mapping rules. This allows for high-quality typography in languages not originally supported by the game.
+- **Adaptive UI Resizer**: Real-time calculation of character sizing and word-wrapping based on the specific linguistic behavior of the target language (e.g., handling Thai vowel stacking or Spanish sentence length).
 
-### 🧠 Phase 2: Translation Engine & Safety
-* **Rich Text Repair**: Automatic restoration of corrupted color tags, gradients, and font size parameters caused by machine translation using the optimized `Fastenshtein` algorithm.
-* **Kill-Switch (Anti-Detection)**: A high-level safety protocol that suppresses translation immediately upon detecting sensitive player data to prevent administrative flags.
-
-### 🎨 Phase 3: Visual & Layout Engine (Universal Master)
-* **Universal Font Redirection**: Dynamically redirects game fonts to high-quality international fonts from the `Font` directory, governed by the `_01.font.txt` rule-set.
-* **Universal UI Resizer**: An adaptive layout processor that handles overflow, line wrapping, and dynamic width adjustments (Shrink vs. ResizeHeight) via `_02.resize.txt`.
-* **Adaptive Font Size**: Context-aware font scaling based on active language (e.g., specific optimizations for Thai/Vietnamese scripts).
-* **Numbers & Bubbles (Beta)**: Ongoing development for precise positioning of speech bubbles and combat gauge telemetry.
+### 3. Data & Performance Optimization
+- **High-Performance Number Formatting**: Implements localized number formatting (standard thousands separators) across all UI elements, including HP gauges and Story text, with zero frame-time impact.
+- **Translation Repair & Sanitization**: Proactively fixes broken Rich Text tags (colors, gradients, and size tags) that are often damaged by auto-translation engines.
+- **Smart Skill Layout**: Consolidates redundant skill description lines into a streamlined, readable format, preventing UI clutter in complex skill data.
 
 ---
 
-## 💎 Development Philosophy (The 10 Commandments)
-Every line of code follows a strict set of principles to ensure the ultimate user experience:
-1.  **Strict Performance Focus**: O(1) Cache-first logic. Zero unnecessary memory allocations in frame updates.
-2.  **Defensive Programming**: Proactive `Util.IsSafe()` verification and file integrity checks before execution.
-3.  **Thread Safety**: Robust lock mechanisms for registries and shared caches.
-4.  **Universal Support**: Dynamic pathing architecture that supports any ISO 639-1 language code without hardcoding.
+## 🛠️ Critical File Structure
+
+The mod organizes its resources within the `BepInEx\Translation\{ISO-639-1}\` directory. This structure allows the mod to be truly universal:
+
+| Path | Purpose |
+| :--- | :--- |
+| `Font\` | Stores `.unity3d` AssetBundles for custom font redirection. |
+| `Other\_01.font.txt` | Mapping rules defining which game objects use specific font assets. |
+| `Other\_02.resize.txt` | Dynamic rules for UI width boundaries and overflow methods (Resize/Shrink). |
+| `Other\text_id.txt` | **Critical**: Enables multi-language search functionality (e.g., searching characters by English/Thai names), bypassing the game's default hardcoded Japanese-only search logic. |
 
 ---
 
-## 🚀 Tech Stack
-* **BepInEx 6 (IL2CPP)**: Next-generation modding framework.
-* **HarmonyX**: High-efficiency runtime bytecode patching.
-* **Fastenshtein**: Integrated high-speed Levenshtein distance algorithm.
-* **Win32 API Bridge**: Direct communication with Windows OS for windowing operations.
+## ⚙️ Configuration (PriconneALLTLFixup.cfg)
+
+The configuration schema is highly modular, allowing for precise control over every fix and optimization:
+
+### [1. Translation Engine]
+- **LanguageCode**: Specify the target **ISO 639-1 Code** (e.g., `th`, `en`, `vi`, `es`). Leave this empty to enable the **Smart Fallback** system which follows XUAT.
+- **EnableTranslationRepair**: Toggles the high-performance regex engine that repairs corrupted color tags and gradients caused by auto-translators.
+
+### [2. User Interface]
+- **EnableSmartSkillLayout**: Toggles the logic that merges repetitive or split skill description blocks for better readability.
+
+### [3. Visual & Font]
+- **EnableFontReplacement**: Toggles global font overriding. When enabled, the mod will attempt to load custom fonts defined in `_01.font.txt`.
+- **EnableUIResizer**: Toggles the dynamic layout adjustment engine. It reads boundaries from `_02.resize.txt` to prevent text overflowing.
+- **EnableNumberFormatting**: Toggles standard thousands separators (`,`) for all numeric values, including combat damage and character HP.
+
+### [4. System Core]
+- **EnableSystemEnvironment**: Manages Windows OS level integration, including window styles and functional shortcuts (F11 for Fullscreen / Alt+Enter).
+- **DisplayMode**: Sets the preferred window mode (0=FullScreen, 1=Borderless, 2=Maximized, 3=Windowed).
+- **DeveloperLogs**: Enables verbose diagnostic logging and performance profiling (Bottleneck Analysis) for mod developers.
+- **EnableTranslatorSync**: Toggles the internal bridge that links this mod's state with the XUnity.AutoTranslator engine.
 
 ---
 
-## 👨‍💻 Developer Context
-This project was built upon the core foundations laid by **Dakari** and **Olegase**. It has since evolved into a universal framework with the assistance of my **AI Collaborator (Gemini)** to reach a professional standard of optimization and architectural cleanliness.
+## 💎 The Master Framework 10 (Project Philosophies)
 
-*Developed with ❤️ to provide the definitive Princess Connect! Re:Dive experience for the global community.*
+Every module in this project is built adhering to our strict professional standards:
+
+1.  **Strict Performance Focus**: All logic is zero-allocation in the main loop; heavy data is managed via high-performance static caches.
+2.  **Clean Code & Architecture**: Adheres to a strict **Separation of Concerns** between the translation bridge, visual engine, and core system modules.
+3.  **Advanced C# Features**: Utilizes `ReadOnlySpan<T>`, `AggressiveInlining`, and `Generics` to minimize CPU overhead and latency.
+4.  **Static Registry Pattern**: Centralized registration of patches and configuration parameters for O(1) access speed during runtime.
+5.  **Thread Safety**: Implements robust lock mechanisms (`_syncRoot`) to ensure data integrity during asynchronous localization tasks.
+6.  **Comprehensive Logging**: A multi-tier logging system that distinguishes between user information and deep developer diagnostics.
+7.  **Defensive Programming**: Extensive use of `Util.IsSafe()` and null-integrity checks to ensure 100% crash prevention.
+8.  **Adaptive UI Logic**: Positions and scales UI elements dynamically based on the specific properties of the active language.
+9.  **Minimal Boilerplate**: Consolidates redundant game hooks into unified, high-efficiency execution modules.
+10. **Professional Documentation**: Provides enterprise-grade project documentation and a transparent file structure for other developers.
+
+---
+*Developed with ❤️ and AI-Enhanced Optimization to bring the ultimate Princess Connect experience to the global community.*
