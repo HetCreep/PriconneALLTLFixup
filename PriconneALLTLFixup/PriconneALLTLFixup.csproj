@@ -24,6 +24,7 @@
     <Compile Include="Patches\NumberComponentPatch.cs" />
     <Compile Include="Patches\TranslationCorePatch.cs" />
     <Compile Include="Patches\UIComponentPatch.cs" />
+    <Compile Include="Patches\UILayoutPatch.cs" />
     <Compile Include="Patches\WindowCorePatch.cs" />
     <Compile Include="Patches\EngineBridgePatch.cs" />
     <Compile Include="Patches\TextSafetyPatch.cs" />
