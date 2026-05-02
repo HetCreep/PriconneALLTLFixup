@@ -1,4 +1,4 @@
-﻿using BepInEx.Configuration;
+using BepInEx.Configuration;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using UnityEngine;
@@ -164,12 +164,19 @@ public static class ConfigManager
         FLog.Info("[Config] Syncing configuration schema...");
 
         var groups = typeof(ConfigManager).GetNestedTypes(BindingFlags.Public | BindingFlags.Static);
-        foreach (var group in groups) RuntimeHelpers.RunClassConstructor(group.TypeHandle);
+        foreach (var group in groups)
+            RuntimeHelpers.RunClassConstructor(group.TypeHandle);
 
         config.SaveOnConfigSet = true;
-        foreach (var s in _registry) s.Bind(config);
 
-        FLog.Info($"[Config] Successfully loaded {_registry.Count} parameters.");
+        foreach (var s in _registry)
+        {
+            s.Bind(config);
+        }
+
+        config.Save();
+
+        FLog.Info($"[Config] Successfully loaded {_registry.Count} parameters and saved to disk.");
     }
 
     public static void SynchronizePatches(HarmonyPatchController controller)
