@@ -36,7 +36,7 @@ public static class UIComponentPatch
             if (_initialized) return;
             try
             {
-                string lang = ConfigManager.Translation.Code.Value;
+                string lang = Util.GetXuatLanguage();
                 string root = Path.Combine(BepInEx.Paths.BepInExRootPath, "Translation", lang);
                 string fontDir = Path.Combine(root, "Font");
                 string otherDir = Path.Combine(root, "Other");
@@ -45,7 +45,7 @@ public static class UIComponentPatch
                 _fontSystemReady = (_baseFont != null);
 
                 if (!_fontSystemReady)
-                    Log.Warn("[Visuals] font_base.unity3d missing. Font redirection will be disabled.");
+                    Log.Warn("[Visual] font_base.unity3d missing. Font redirection will be disabled.");
 
                 if (_fontSystemReady && Directory.Exists(fontDir))
                 {
@@ -62,9 +62,9 @@ public static class UIComponentPatch
                 ParseLayoutConfig(Path.Combine(otherDir, "_02.resize.txt"));
 
                 _initialized = true;
-                Log.Info($"[Visuals] UI Engine Ready for '{lang}'. Rules: {_layoutRules.Count} resizer, {_fontRules.Count} font.");
+                Log.Info($"[Visual] UI Engine Ready for '{lang}'. Rules: {_layoutRules.Count} resizer, {_fontRules.Count} font.");
             }
-            catch (Exception ex) { Log.Error("[Visuals] Engine init failed", ex); }
+            catch (Exception ex) { Log.Error("[Visual] Engine init failed", ex); }
         }
     }
 
@@ -132,8 +132,17 @@ public static class UIComponentPatch
     private static int GetAdaptiveSize(int originalSize)
     {
         if (originalSize != 24) return originalSize;
-        string lang = ConfigManager.Translation.Code.Value;
-        return lang switch { "th" or "vi" => 19, "en" or "es" => 20, _ => 21 };
+
+        string lang = Util.GetXuatLanguage();
+
+        return lang switch
+        {
+            "th" or "vi" or "hi" => 19,
+
+            "en" or "es" or "fr" or "de" or "it" => 20,
+
+            _ => 21
+        };
     }
     #endregion
 
@@ -142,7 +151,7 @@ public static class UIComponentPatch
     [HarmonyPrefix]
     public static void PrefixNGUIAwake(CustomUILabel __instance)
     {
-        if (!ConfigManager.Visuals.UIFont.Value && !ConfigManager.Visuals.UIUniversal.Value) return;
+        if (!ConfigManager.Visual.UIFont.Value && !ConfigManager.Visual.UIUniversal.Value) return;
         if (!_initialized) Initialize();
         if (__instance.IsSafe()) ApplyNGUIStyle(__instance);
     }
@@ -159,14 +168,14 @@ public static class UIComponentPatch
     {
         string path = label.transform.GetHierarchyPath();
 
-        if (ConfigManager.Visuals.UIFont.Value && _fontSystemReady)
+        if (ConfigManager.Visual.UIFont.Value && _fontSystemReady)
         {
             Font targetFont = GetMatchedFont(path) ?? _baseFont;
             if (targetFont != null && label.trueTypeFont != targetFont)
                 label.trueTypeFont = targetFont;
         }
 
-        if (ConfigManager.Visuals.UIUniversal.Value)
+        if (ConfigManager.Visual.UIUniversal.Value)
         {
             var layout = GetMatchedLayout(path);
             if (layout.HasValue)
@@ -224,8 +233,8 @@ public static class UIComponentPatch
     {
         if (_resizeInProgress || !__instance.IsSafe() || string.IsNullOrEmpty(value)) return;
 
-        bool doFont = ConfigManager.Visuals.UIFont.Value;
-        bool doResize = ConfigManager.Visuals.UIUniversal.Value;
+        bool doFont = ConfigManager.Visual.UIFont.Value;
+        bool doResize = ConfigManager.Visual.UIUniversal.Value;
         if (!doFont && !doResize) return;
 
         try

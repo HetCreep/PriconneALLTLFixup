@@ -17,7 +17,7 @@ public static class TextRegistryPatch
 
     private static string GetOtherFilePath(string fileName) => Path.Combine(
         Paths.BepInExRootPath, "Translation",
-        ConfigManager.Translation.Code.Value,
+        Util.GetXuatLanguage(),
         "Other", fileName);
 
     internal struct ProcessedItem
@@ -83,7 +83,7 @@ public static class TextRegistryPatch
                     }
                 }
             }
-            Log.Info($"[Registry] Static text mapping successfully loaded for: {ConfigManager.Translation.Code.Value}");
+            Log.Info($"[Registry] Static text mapping successfully loaded for: {Util.GetXuatLanguage()}");
         }
         catch (Exception ex)
         {
