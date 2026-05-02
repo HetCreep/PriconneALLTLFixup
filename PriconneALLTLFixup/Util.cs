@@ -57,7 +57,7 @@ public static class Util
             {
                 int range = Math.Min(100, _poolHistory.Count);
                 for (int i = 0; i < range; i++) { _sanitizedPool.Remove(_poolHistory[0]); _poolHistory.RemoveAt(0); }
-                Log.Debug($"[Memory] Purged {range} cache entries to optimize heap.");
+                FLog.Debug($"[Memory] Purged {range} cache entries to optimize heap.");
             }
             _sanitizedPool[key] = val;
             _poolHistory.Add(key);
@@ -135,9 +135,9 @@ public static class Util
                 var delayProp = endpoint?.GetType().GetProperty("TranslationDelay", UniversalFlags);
                 if (delayProp != null) _xuatDelayGetter = CreateAccessor<float>(delayProp);
 
-                Log.Info("[Bridge] XUAT High-performance link established.");
+                FLog.Info("[Bridge] XUAT High-performance link established.");
             }
-            catch (Exception ex) { Log.Debug($"[Bridge] Link failed: {ex.Message}"); }
+            catch (Exception ex) { FLog.Debug($"[Bridge] Link failed: {ex.Message}"); }
             finally { _isXuatLinked = true; }
         }
     }
@@ -177,7 +177,7 @@ public static class Util
         if (!string.Equals(current, targetLang, StringComparison.OrdinalIgnoreCase))
         {
             _xuatLanguageSetter(_xuatInstance, targetLang);
-            Log.Info($"[Bridge] XUAT Language forced to: {targetLang}");
+            FLog.Info($"[Bridge] XUAT Language forced to: {targetLang}");
         }
     }
     #endregion
@@ -217,9 +217,9 @@ public static class Util
 
                 bundle.Unload(false);
             }
-            Log.Info($"[Assets] Global preloading complete. ({_loadedFontAssets.Count} assets)");
+            FLog.Info($"[Assets] Global preloading complete. ({_loadedFontAssets.Count} assets)");
         }
-        catch (Exception ex) { Log.Error("Global font preloading failed.", ex); }
+        catch (Exception ex) { FLog.Error("Global font preloading failed.", ex); }
     }
 
     private static string ExpandCharsetRange(string input)
@@ -262,7 +262,7 @@ public static class Util
             {
                 var addMethod = table.GetType().GetMethod("Add", UniversalFlags);
                 addMethod?.Invoke(table, new[] { fallback });
-                Log.Debug($"[Assets] Linked fallback: {fallback.name} -> {main.name}");
+                FLog.Debug($"[Assets] Linked fallback: {fallback.name} -> {main.name}");
             }
         }
         catch { /*  */ }

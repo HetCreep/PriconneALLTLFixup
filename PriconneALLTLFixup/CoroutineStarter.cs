@@ -32,7 +32,7 @@ public class CoroutineStarter : MonoBehaviour
     {
         if (_mainThreadId != 0) return;
         _mainThreadId = Environment.CurrentManagedThreadId;
-        Log.Debug($"Core Thread ID defined: {_mainThreadId}");
+        FLog.Debug($"Core Thread ID defined: {_mainThreadId}");
     }
 
     public static CoroutineStarter Instance
@@ -54,7 +54,7 @@ public class CoroutineStarter : MonoBehaviour
                 DontDestroyOnLoad(container);
 
                 _instance = container.AddComponent<CoroutineStarter>();
-                Log.Info("[System] Coroutine Engine Started.");
+                FLog.Info("[System] Coroutine Engine Started.");
                 return _instance;
             }
         }
@@ -90,7 +90,7 @@ public class CoroutineStarter : MonoBehaviour
     {
         if (_instance == this) _instance = null;
         _waitCache.Clear();
-        Log.Debug("CoroutineStarter engine stopped and memory released.");
+        FLog.Debug("CoroutineStarter engine stopped and memory released.");
     }
     #endregion
 
@@ -136,8 +136,8 @@ public class CoroutineStarter : MonoBehaviour
         try { action(); }
         catch (Exception ex)
         {
-            Log.Error($"[Coroutine] Task execution error: {ex.Message}");
-            Log.Debug(ex);
+            FLog.Error($"[Coroutine] Task execution error: {ex.Message}");
+            FLog.Debug(ex);
         }
     }
 

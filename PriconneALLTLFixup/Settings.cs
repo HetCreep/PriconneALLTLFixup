@@ -137,7 +137,7 @@ public static class ConfigManager
         private const string S = "5. System Core";
 
         public static readonly PatchToggleSetting DebugMode = new(
-            S, "DeveloperLogs", false, "เปิดการบันทึก Log เชิงลึกสำหรับนักพัฒนา (Verbose Logging)");
+            S, "DeveloperLogs", false, "เปิดการบันทึก FLog เชิงลึกสำหรับนักพัฒนา (Verbose Logging)");
 
         public static readonly ConfigSetting<string> Version = new(
             S, "ModVersion", MyPluginInfo.Version, "ข้อมูลเวอร์ชันปัจจุบันของมอด");
@@ -161,7 +161,7 @@ public static class ConfigManager
     #region 2. Flow Control
     public static void Initialize(ConfigFile config)
     {
-        Log.Info("[Config] Syncing configuration schema...");
+        FLog.Info("[Config] Syncing configuration schema...");
 
         var groups = typeof(ConfigManager).GetNestedTypes(BindingFlags.Public | BindingFlags.Static);
         foreach (var group in groups) RuntimeHelpers.RunClassConstructor(group.TypeHandle);
@@ -169,7 +169,7 @@ public static class ConfigManager
         config.SaveOnConfigSet = true;
         foreach (var s in _registry) s.Bind(config);
 
-        Log.Info($"[Config] Successfully loaded {_registry.Count} parameters.");
+        FLog.Info($"[Config] Successfully loaded {_registry.Count} parameters.");
     }
 
     public static void SynchronizePatches(HarmonyPatchController controller)

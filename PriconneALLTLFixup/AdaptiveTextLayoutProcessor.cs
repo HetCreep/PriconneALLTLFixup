@@ -37,7 +37,7 @@ public class AdaptiveTextLayoutProcessor
         _renderer = mesh.GetComponent<Renderer>();
 
         if (_font == null)
-            Log.Error($"[Layout] Component '{mesh.name}' is missing a valid Font reference.");
+            FLog.Error($"[Layout] Component '{mesh.name}' is missing a valid Font reference.");
     }
     #endregion
 
@@ -76,7 +76,7 @@ public class AdaptiveTextLayoutProcessor
             }
         }
 
-        Log.Debug($"Processing layout for: {raw.Length} chars");
+        FLog.Debug($"Processing layout for: {raw.Length} chars");
 
         float scale = CalculateEffectiveScale();
         float currentX = 0f;
@@ -185,7 +185,7 @@ public class AdaptiveTextLayoutProcessor
                         _layoutCache.Remove(_lruHistory[0]);
                         _lruHistory.RemoveAt(0);
                     }
-                    Log.Debug($"[Memory] Layout cache purged {cleanCount} items.");
+                    FLog.Debug($"[Memory] Layout cache purged {cleanCount} items.");
                 }
                 _lruHistory.Add(key);
             }
@@ -200,7 +200,7 @@ public class AdaptiveTextLayoutProcessor
             _advanceCache.Clear();
             _layoutCache.Clear();
             _lruHistory.Clear();
-            Log.Debug("[Memory] Layout Processor caches purged.");
+            FLog.Debug("[Memory] Layout Processor caches purged.");
         }
     }
     #endregion

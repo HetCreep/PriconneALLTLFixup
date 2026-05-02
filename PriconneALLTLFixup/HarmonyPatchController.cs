@@ -40,7 +40,7 @@ public class HarmonyPatchController
     #region 3. Public Orchestration API
     public void ApplySmartPatching()
     {
-        Log.Info($"[Harmony] Initializing smart sequence: {_criticalRegistry.Count} Critical, {_featureRegistry.Count} Features.");
+        FLog.Info($"[Harmony] Initializing smart sequence: {_criticalRegistry.Count} Critical, {_featureRegistry.Count} Features.");
 
         foreach (var patch in _criticalRegistry) ApplySinglePatch(patch);
 
@@ -52,7 +52,7 @@ public class HarmonyPatchController
 
     public void ApplyAllSynchronous()
     {
-        Log.Info($"[Harmony] Full sync deployment for {ActivePatchCount} patches.");
+        FLog.Info($"[Harmony] Full sync deployment for {ActivePatchCount} patches.");
         foreach (var patch in _criticalRegistry) ApplySinglePatch(patch);
         foreach (var patch in _featureRegistry) ApplySinglePatch(patch);
     }
@@ -65,11 +65,11 @@ public class HarmonyPatchController
         {
             _harmony.UnpatchSelf();
             _patchProfiling.Clear();
-            Log.Info("[Harmony] Global teardown complete. All patches removed.");
+            FLog.Info("[Harmony] Global teardown complete. All patches removed.");
         }
         catch (Exception ex)
         {
-            Log.Error($"[Harmony] Teardown failed: {ex.Message}");
+            FLog.Error($"[Harmony] Teardown failed: {ex.Message}");
         }
     }
 
@@ -91,11 +91,11 @@ public class HarmonyPatchController
                 if (isOwner) _harmony.Unpatch(method, HarmonyPatchType.All, _harmony.Id);
             }
             _patchProfiling.Remove(type.Name);
-            Log.Debug($"Unpatched module: {type.Name}");
+            FLog.Debug($"Unpatched module: {type.Name}");
         }
         catch (Exception ex)
         {
-            Log.Error($"[Harmony] Partial unpatch failed for {type.Name}: {ex.Message}");
+            FLog.Error($"[Harmony] Partial unpatch failed for {type.Name}: {ex.Message}");
         }
     }
     #endregion
@@ -133,11 +133,11 @@ public class HarmonyPatchController
                 else _featureRegistry.Add(item.Type);
             }
 
-            Log.Debug($"[Scanner] Registry populated with {patchList.Count} modules.");
+            FLog.Debug($"[Scanner] Registry populated with {patchList.Count} modules.");
         }
         catch (Exception ex)
         {
-            Log.Error($"[Scanner] Failed to build patch registry: {ex.Message}");
+            FLog.Error($"[Scanner] Failed to build patch registry: {ex.Message}");
         }
     }
 
@@ -153,7 +153,7 @@ public class HarmonyPatchController
                 var shouldPatch = prepare.Invoke(null, new object[] { _harmony });
                 if (shouldPatch is bool result && !result)
                 {
-                    Log.Debug($"[Harmony] Skipped {type.Name} per Prepare() logic.");
+                    FLog.Debug($"[Harmony] Skipped {type.Name} per Prepare() logic.");
                     return;
                 }
             }
@@ -164,12 +164,12 @@ public class HarmonyPatchController
             _patchProfiling[type.Name] = timer.ElapsedMilliseconds;
 
             var cat = type.GetCustomAttribute<HarmonyPatchCategory>()?.Category ?? "Misc";
-            Log.Debug($"[{cat}] Applied: {type.Name} in {timer.ElapsedMilliseconds}ms");
+            FLog.Debug($"[{cat}] Applied: {type.Name} in {timer.ElapsedMilliseconds}ms");
         }
         catch (Exception ex)
         {
             timer.Stop();
-            Log.Error($"[Harmony] Critical failure in {type.Name}: {ex.Message}");
+            FLog.Error($"[Harmony] Critical failure in {type.Name}: {ex.Message}");
         }
     }
 
@@ -182,7 +182,7 @@ public class HarmonyPatchController
             processed++;
             if (processed % size == 0) yield return null;
         }
-        Log.Info($"[Harmony] Background deployment finished ({processed} modules).");
+        FLog.Info($"[Harmony] Background deployment finished ({processed} modules).");
     }
     #endregion
 }
