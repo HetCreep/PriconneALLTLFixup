@@ -6,6 +6,18 @@ An advanced performance optimization, visual enhancement, and localization repai
 
 ---
 
+> [!CAUTION]
+> **XUnity.AutoTranslator (XUAT) is REQUIRED.**
+> This framework is designed to work as an intelligence and visual enhancement layer for XUAT. If XUAT is not detected, the mod will safely abort its initialization to ensure game stability.
+
+---
+
+![GitHub release (latest by date)](https://img.shields.io/github/v/release/HetCreep/PriconneALLTLFixup)
+![GitHub License](https://img.shields.io/github/license/HetCreep/PriconneALLTLFixup)
+![Platform](https://img.shields.io/badge/platform-PC%20%7C%20Unity-blue)
+
+---
+
 ## 🚀 Tech Stack & Dependencies
 
 ### Core Infrastructure
@@ -37,6 +49,26 @@ An advanced performance optimization, visual enhancement, and localization repai
 ### 3. Data Integrity & Global Search
 - **Multi-Language Search Support**: Powered by the critical `text_id.txt` mapping. This feature unlocks the ability to search for characters, items, or equipment using their translated names (English/Thai/etc.), successfully bypassing the game's default logic which is hardcoded to Japanese-only search keys.
 - **High-Performance Number Formatting**: Dynamically injects standard thousands separators (`,`) across the entire game UI. This includes critical combat elements like HP gauges, damage numbers, and currency counts, all processed through an optimized cache.
+
+---
+
+## 🖼️ Visual Preview
+*(Note: Replace these placeholders with your actual screenshot URLs)*
+| Feature | Before | After |
+| :--- | :---: | :---: |
+| **Number Formatting** | 1234567 | 1,234,567 |
+| **Universal Font** | Default Japanese Font | High-Quality Custom Font |
+| **Adaptive UI** | Text Overflowing | Perfectly Scaled UI |
+
+---
+
+## 🛠️ Installation
+
+1.  **Requirements**: Ensure you have [BepInEx 6 (IL2CPP)](https://github.com/BepInEx/BepInEx) and [XUnity.AutoTranslator](https://github.com/bbepis/XUnity.AutoTranslator) installed and working.
+2.  **Download**: Get the latest `PriconneALLTLFixup.dll` from the [Releases](https://github.com/HetCreep/PriconneALLTLFixup/releases) page.
+3.  **Deployment**: Copy the `.dll` file into your game's plugin folder: `BepInEx\plugins\`.
+4.  **First Run**: Launch the game once to generate the default configuration at `BepInEx\config\PriconneALLTLFixup.cfg`.
+5.  **Assets Setup**: Place your custom fonts and mapping files in the corresponding language folder: `BepInEx\Translation\{LanguageCode}\Font\` and `Other\`.
 
 ---
 
@@ -109,4 +141,21 @@ Every module in this project is built adhering to these 10 strict professional s
 We are actively searching for talented developers with expertise in **C#**, **IL2CPP**, **Reverse Engineering**, or **UI/UX Design** to join our development efforts. If you are passionate about building the most advanced localization framework for the community, your contributions are more than welcome. Feel free to open a Pull Request or contact us via the repository!
 
 ---
+
+## 🏗️ Building from Source
+
+This project uses a specialized environment for building.
+1. Clone the repository.
+2. **Library Setup**: This project relies on local dependencies. Ensure you have the necessary DLLs in the `libs/` folder (organized into `core`, `interop`, and `plugins` subfolders) as defined in the project structure.
+3. Open `PriconneALLTLFixup.sln` using **Visual Studio 2022**.
+4. Set the build configuration to **Release**.
+5. Build the solution. The automated **ILRepack** task will combine the main DLL with `Fastenshtein.dll` into a single high-performance package.
+
+---
+
 *Developed with ❤️ to bring the ultimate Princess Connect experience to the global community.*
+
+---
+
+## 📜 License
+This project is licensed under the **MIT License** - feel free to use and improve it for the community!
