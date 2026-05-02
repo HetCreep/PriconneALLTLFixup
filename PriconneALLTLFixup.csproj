@@ -10,7 +10,7 @@
 		<PackageProjectUrl>https://github.com/HetCreep/PriconneALLTLFixup</PackageProjectUrl>
 		<OriginalAuthor>Dakari and Olegase</OriginalAuthor>
 
-		<BepInDir Condition="'$(GITHUB_ACTIONS)' == 'true'">$(MSBuildProjectDirectory)\..\libs</BepInDir>
+		<BepInDir Condition="'$(GITHUB_ACTIONS)' == 'true'">$(ProjectDir)libs</BepInDir>
 		<BepInDir Condition="'$(GITHUB_ACTIONS)' != 'true'">$(UserProfile)\priconner\BepInEx</BepInDir>
 	</PropertyGroup>
 
