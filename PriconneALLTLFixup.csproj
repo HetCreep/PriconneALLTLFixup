@@ -206,23 +206,6 @@
 		<Message Importance="High" Text="[Sync] ✨ Version Sync Task Completed." />
 	</Target>
 
-	<Target Name="ILRepack" AfterTargets="Build">
-		<ItemGroup>
-			<InputAssemblies Include="$(OutputPath)$(TargetName).dll" />
-			<InputAssemblies Include="$(OutputPath)Fastenshtein.dll" />
-		</ItemGroup>
-
-		<ILRepack
-			Parallel="true"
-			InputAssemblies="@(InputAssemblies)"
-			Internalize="false"
-			TargetKind="SameAsPrimaryAssembly"
-			OutputFile="$(OutputPath)$(TargetName).dll"
-			LibraryPath="$(BepInDir)\core;$(BepInDir)\interop;$(BepInDir)\plugins" />
-
-		<Delete Files="$(OutputPath)Fastenshtein.dll" />
-	</Target>
-
 	<Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition="'$(GITHUB_ACTIONS)' != 'true'">
 		<ItemGroup>
 			<CoreDlls Include="@(Reference->'%(HintPath)')" Condition="$([System.String]::new('%(Reference.HintPath)').Contains('core'))" />
