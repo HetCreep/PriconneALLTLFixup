@@ -45,7 +45,7 @@ public static class TextRegistryPatch
 
         if (!File.Exists(path))
         {
-            Log.Error($"[Registry] CRITICAL: 'text_id.txt' not found at {path}. Static text mapping is now ABORTED.");
+            FLog.Error($"[Registry] CRITICAL: 'text_id.txt' not found at {path}. Static text mapping is now ABORTED.");
             return;
         }
 
@@ -83,11 +83,11 @@ public static class TextRegistryPatch
                     }
                 }
             }
-            Log.Info($"[Registry] Static text mapping successfully loaded for: {Util.GetXuatLanguage()}");
+            FLog.Info($"[Registry] Static text mapping successfully loaded for: {Util.GetXuatLanguage()}");
         }
         catch (Exception ex)
         {
-            Log.Error($"[Registry] Runtime error during text mapping: {ex.Message}");
+            FLog.Error($"[Registry] Runtime error during text mapping: {ex.Message}");
         }
     }
     #endregion
@@ -144,7 +144,7 @@ public static class TextRegistryPatch
             OriginalStrings.Clear();
             TranslatedStrings.Clear();
             StoredSkillTexts.Clear();
-            Log.Debug("[Registry] All text registries purged.");
+            FLog.Debug("[Registry] All text registries purged.");
         }
     }
     #endregion

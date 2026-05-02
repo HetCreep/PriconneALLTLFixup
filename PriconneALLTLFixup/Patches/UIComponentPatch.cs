@@ -45,7 +45,7 @@ public static class UIComponentPatch
                 _fontSystemReady = (_baseFont != null);
 
                 if (!_fontSystemReady)
-                    Log.Warn("[Visual] font_base.unity3d missing. Font redirection will be disabled.");
+                    FLog.Warn("[Visual] font_base.unity3d missing. Font redirection will be disabled.");
 
                 if (_fontSystemReady && Directory.Exists(fontDir))
                 {
@@ -62,9 +62,9 @@ public static class UIComponentPatch
                 ParseLayoutConfig(Path.Combine(otherDir, "_02.resize.txt"));
 
                 _initialized = true;
-                Log.Info($"[Visual] UI Engine Ready for '{lang}'. Rules: {_layoutRules.Count} resizer, {_fontRules.Count} font.");
+                FLog.Info($"[Visual] UI Engine Ready for '{lang}'. Rules: {_layoutRules.Count} resizer, {_fontRules.Count} font.");
             }
-            catch (Exception ex) { Log.Error("[Visual] Engine init failed", ex); }
+            catch (Exception ex) { FLog.Error("[Visual] Engine init failed", ex); }
         }
     }
 

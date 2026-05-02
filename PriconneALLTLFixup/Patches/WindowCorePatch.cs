@@ -29,7 +29,7 @@ public static class WindowCorePatch
     {
         if (!ConfigManager.Core.SystemIntegration.Value) return;
 
-        Log.Info("[Window] Initializing Core Display System...");
+        FLog.Info("[Window] Initializing Core Display System...");
 
         ApplyWindowIntegrity();
         ApplyTransition(isInitialLoad: true);
@@ -85,15 +85,15 @@ public static class WindowCorePatch
             {
                 var mode = ConfigManager.Core.DisplayMode.Value;
                 Screen.SetResolution(native.width, native.height, mode);
-                Log.Debug($"[Window] Transitioning to {mode} ({native.width}x{native.height})");
+                FLog.Debug($"[Window] Transitioning to {mode} ({native.width}x{native.height})");
             }
             else
             {
                 Screen.SetResolution(_lastWidth, _lastHeight, FullScreenMode.Windowed);
-                Log.Debug($"[Window] Restoring Windowed mode ({_lastWidth}x{_lastHeight})");
+                FLog.Debug($"[Window] Restoring Windowed mode ({_lastWidth}x{_lastHeight})");
             }
         }
-        catch (Exception ex) { Log.Error("Display transition failed", ex); }
+        catch (Exception ex) { FLog.Error("Display transition failed", ex); }
         finally { _isTransitioning = false; }
     }
     #endregion
@@ -112,9 +112,9 @@ public static class WindowCorePatch
             long exStyle = WindowsAPI.GetWindowLong(hWnd, GWL_EXSTYLE) | WS_EX_ACCEPTFILES;
             WindowsAPI.SetWindowLong(hWnd, GWL_EXSTYLE, exStyle);
 
-            Log.Debug("[System] Window styles synchronized with OS.");
+            FLog.Debug("[System] Window styles synchronized with OS.");
         }
-        catch (Exception ex) { Log.Debug($"[System] OS Integrity Sync bypassed: {ex.Message}"); }
+        catch (Exception ex) { FLog.Debug($"[System] OS Integrity Sync bypassed: {ex.Message}"); }
     }
     #endregion
 }

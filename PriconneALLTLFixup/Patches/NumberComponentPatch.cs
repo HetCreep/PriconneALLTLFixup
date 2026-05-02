@@ -23,6 +23,7 @@ public static class NumberComponentPatch
     private static readonly Regex _dateExclusionRegex = new Regex(@"\d{2,4}[/\.\-]\d{2}[/\.\-]\d{2,4}", RegexOptions.Compiled);
     private static readonly Regex _hpFractionRegex = new Regex(@"^(\d+)/(\d{4,})$", RegexOptions.Compiled);
     private static readonly Regex _gradientRegex = new Regex(@"^(\[[0-9a-fA-F,-]+\])[x+×]?(\d{4,})(\[[0-9a-fA-F,-]+\])$", RegexOptions.Compiled);
+    private static readonly Regex _floatDetectionRegex = new Regex(@"(\d{4,})\.(\d+)", RegexOptions.Compiled);
     #endregion
 
     #region 2. Module A: Engine Number Formatting (Int32 / Int64)
@@ -113,6 +114,17 @@ public static class NumberComponentPatch
 
         string name = __instance.name.ToLower();
         if (name.Contains("input") || name.Contains("condition")) return;
+
+        var floatMatch = _floatDetectionRegex.Match(value);
+        if (floatMatch.Success)
+        {
+            if (long.TryParse(floatMatch.Groups[1].Value, out long frontPart))
+            {
+                string formattedFront = frontPart.ToString("#,0", _culture);
+                value = value.Replace(floatMatch.Groups[1].Value, formattedFront);
+                return;
+            }
+        }
 
         var hpMatch = _hpFractionRegex.Match(value);
         if (hpMatch.Success)

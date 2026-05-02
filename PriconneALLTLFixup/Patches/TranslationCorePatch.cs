@@ -129,7 +129,7 @@ public static class TranslationCorePatch
                     if (aliases.Length > 0) NameDict[jpKey] = aliases;
                 }
             }
-            Log.Info($"[Dict] Ready: {NameDict.Count} unit name mappings loaded.");
+            FLog.Info($"[Dict] Ready: {NameDict.Count} unit name mappings loaded.");
         }
         catch { /*  */ }
     }
@@ -151,7 +151,7 @@ public static class TranslationCorePatch
         {
             InitializeNameDict();
         }
-        Log.Info($"[Toggle] Translation Engine Sync: {isActive}");
+        FLog.Info($"[Toggle] Translation Engine Sync: {isActive}");
     }
 
     [HarmonyPatch(typeof(LoadIndexReceiveParam), "ParseLoadIndexReceiveParam")]
@@ -165,7 +165,7 @@ public static class TranslationCorePatch
             if (PestStrings.Contains(ApplyRot13(party.PartyName)))
             {
                 _isTranslationSuppressed = true;
-                Log.Warn("[Control] Anti-detection triggered.");
+                FLog.Warn("[Control] Anti-detection triggered.");
                 break;
             }
         }

@@ -15,7 +15,6 @@ public static class EngineBridgePatch
     public static bool PrefixLoadAsset(AssetBundle __instance, ref UnityEngine.Object __result, string name, Il2CppSystem.Type type)
     {
         if (__instance == null || string.IsNullOrEmpty(name)) return true;
-
         if (type.Equals(Il2CppType.Of<Font>()) || name.IndexOf("font", StringComparison.OrdinalIgnoreCase) >= 0)
         {
             try
@@ -23,11 +22,11 @@ public static class EngineBridgePatch
                 var asset = __instance.LoadAsset(name, type);
                 if (asset != null)
                 {
-                    __result = asset.Cast<UnityEngine.Object>().Persistent();
+                    __result = asset.Cast<UnityEngine.Object>();
                     return false;
                 }
             }
-            catch (Exception ex) { Log.Debug($"[Bridge] Asset redirection failed: {name} | {ex.Message}"); }
+            catch (Exception ex) { FLog.Debug($"[Bridge] Asset redirection failed: {name} | {ex.Message}"); }
         }
         return true;
     }
@@ -51,11 +50,12 @@ public static class EngineBridgePatch
     public static void PostfixXUAT(AutoTranslationPlugin __instance)
     {
         if (__instance == null) return;
-        Plugin.AutoTranslatorPlugin = __instance;
+
+        PriconneALLTLFixup.Plugin.Xuat = __instance;
 
         if (!ConfigManager.Core.TranslatorIntegration.Value) return;
 
-        Log.Info("[Bridge] XUAT link established. Calculating synchronization policy...");
+        FLog.Info("[Bridge] XUAT High-performance link established.");
 
         SyncLanguagePolicy();
         SynchronizeEngineTelemetry(__instance);
@@ -64,12 +64,9 @@ public static class EngineBridgePatch
     private static void SyncLanguagePolicy()
     {
         string effectiveLang = Util.GetXuatLanguage();
+        FLog.Info($"[Bridge] Language synchronized to: {effectiveLang}");
 
-        string xuatEngineLang = Util.GetXuatBridgeLanguage();
-
-        Log.Info($"[Bridge] Localization De-coupled.");
-        Log.Info($"[Bridge] -> Effective Path: BepInEx\\Translation\\{effectiveLang}");
-        Log.Info($"[Bridge] -> XUAT Engine: {xuatEngineLang}");
+        ConfigManager.Translation.Code.Value = effectiveLang;
     }
 
     private static void SynchronizeEngineTelemetry(AutoTranslationPlugin instance)
@@ -83,7 +80,7 @@ public static class EngineBridgePatch
             {
                 var endpointId = endpoint.GetType().GetProperty("Endpoint", Util.UniversalFlags)?.GetValue(endpoint);
                 var delay = endpoint.GetType().GetProperty("TranslationDelay", Util.UniversalFlags)?.GetValue(endpoint);
-                Log.Info($"[XUAT] Active Endpoint: {endpointId} | Latency: {delay}s");
+                FLog.Info($"[XUAT] Active Endpoint: {endpointId} | Latency: {delay}s");
             }
         }
         catch { /* Failsafe */ }
