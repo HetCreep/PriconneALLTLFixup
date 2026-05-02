@@ -114,7 +114,8 @@ public static class Util
                 _xuatInstance = plugin.Instance;
                 var type = _xuatInstance.GetType();
 
-                _xuatSettings = type.GetProperty("Settings", UniversalFlags)?.GetValue(_xuatInstance);
+                var settingsProp = type.GetProperty("Settings", UniversalFlags);
+                _xuatSettings = settingsProp?.GetValue(_xuatInstance);
 
                 if (_xuatSettings != null)
                 {
@@ -144,6 +145,29 @@ public static class Util
     public static bool IsXuatActive() { LinkTranslationEngine(); return _xuatModeGetter?.Invoke(_xuatInstance) ?? false; }
     public static float GetXuatDelay() { LinkTranslationEngine(); return _xuatDelayGetter?.Invoke(_xuatInstance) ?? 0.5f; }
 
+    public static string GetXuatBridgeLanguage()
+    {
+        LinkTranslationEngine();
+
+        string detected = _xuatLanguageGetter?.Invoke(_xuatInstance);
+
+        if (!string.IsNullOrEmpty(detected)) return detected;
+
+        return ConfigManager.Translation.Code.DefaultValue;
+    }
+
+    public static string GetXuatLanguage()
+    {
+        string modLanguage = ConfigManager.Translation.Code.Value;
+
+        if (!string.IsNullOrWhiteSpace(modLanguage))
+        {
+            return modLanguage;
+        }
+
+        return GetXuatBridgeLanguage();
+    }
+
     public static void SyncXuatLanguage(string targetLang)
     {
         LinkTranslationEngine();
@@ -155,12 +179,6 @@ public static class Util
             _xuatLanguageSetter(_xuatInstance, targetLang);
             Log.Info($"[Bridge] XUAT Language forced to: {targetLang}");
         }
-    }
-
-    public static string GetXuatLanguage()
-    {
-        LinkTranslationEngine();
-        return _xuatLanguageGetter?.Invoke(_xuatInstance) ?? ConfigManager.Translation.Code.Value;
     }
     #endregion
 

@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <Compile Include="Patches\TextRegistryPatch.cs" />
+    <Compile Include="Patches\NumberComponentPatch.cs" />
     <Compile Include="Patches\TranslationCorePatch.cs" />
     <Compile Include="Patches\UIComponentPatch.cs" />
     <Compile Include="Patches\WindowCorePatch.cs" />

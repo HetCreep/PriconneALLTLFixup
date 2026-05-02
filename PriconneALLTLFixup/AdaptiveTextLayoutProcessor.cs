@@ -192,5 +192,16 @@ public class AdaptiveTextLayoutProcessor
             _layoutCache[key] = val;
         }
     }
+
+    public static void ClearCaches()
+    {
+        lock (_syncRoot)
+        {
+            _advanceCache.Clear();
+            _layoutCache.Clear();
+            _lruHistory.Clear();
+            Log.Debug("[Memory] Layout Processor caches purged.");
+        }
+    }
     #endregion
 }

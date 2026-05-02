@@ -82,7 +82,7 @@ public static class ConfigManager
         private const string S = "1. Translation Engine";
 
         public static readonly ConfigSetting<string> Code = new(
-            S, "LanguageCode", "en", "ISO 639-1 Code (รหัสภาษาหลักที่มอดจะอ้างอิง)");
+            S, "LanguageCode", "", "ISO 639-1 Code (ปล่อยว่างเพื่อให้อ้างอิงตาม XUAT อัตโนมัติ)");
 
         public static readonly PatchToggleSetting TranslationRepair = new(
             S, "EnableTranslationRepair", true,
@@ -102,9 +102,9 @@ public static class ConfigManager
             typeof(Patches.TextRegistryPatch));
     }
 
-    public static class Visuals
+    public static class Visual
     {
-        private const string S = "3. Visuals & Font";
+        private const string S = "3. Visual & Font";
 
         public static readonly PatchToggleSetting UIFont = new(
             S, "EnableFontReplacement", true,
@@ -115,6 +115,11 @@ public static class ConfigManager
             S, "EnableUIResizer", true,
             "เปิดใช้งานระบบปรับขนาดและตัดคำอัตโนมัติตามกฎใน _02.resize.txt",
             typeof(Patches.UIComponentPatch));
+
+        public static readonly PatchToggleSetting UINumbers = new(
+            S, "EnableNumberFormatting", true,
+            "เปิดใช้งานเครื่องหมายคั่นหลักพัน (,) และจัดรูปแบบตัวเลขเกจเลือด",
+            typeof(Patches.NumberComponentPatch));
     }
     #endregion
 

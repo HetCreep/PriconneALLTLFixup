@@ -40,7 +40,6 @@ public class Plugin : BasePlugin
 
             InitiatePatchDeployment();
 
-            //InitializeSpecializedIntegrations();
             ConfigManager.SynchronizePatches(_patchController);
 
             LogExecutionSummary();
@@ -56,6 +55,12 @@ public class Plugin : BasePlugin
         try
         {
             PriconneALLTLFixup.Log.Info("Initiating safe teardown of translation modules...");
+
+            Patches.NumberComponentPatch.ClearCaches();
+            Patches.TextRegistryPatch.ClearCache();
+            Patches.UIComponentPatch.ClearCaches();
+            AdaptiveTextLayoutProcessor.ClearCaches();
+
             _patchController.UnpatchAll();
             Instance = null!;
             return true;
