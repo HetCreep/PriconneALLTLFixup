@@ -1,222 +1,225 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>latest</LangVersion>
-    <Version>12.2.0</Version>
-    <Authors>HetCreep</Authors>
-    <Description>PriconneALLTLFixup by HetCreep</Description>
-    <PackageProjectUrl>https://github.com/HetCreep/PriconneALLTLFixup</PackageProjectUrl>
-    <OriginalAuthor>Dakari and Olegase</OriginalAuthor>
-  </PropertyGroup>
+	<PropertyGroup>
+		<TargetFramework>net6.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<LangVersion>latest</LangVersion>
+		<Version>12.2.0</Version>
+		<Authors>HetCreep</Authors>
+		<Description>PriconneALLTLFixup by HetCreep</Description>
+		<PackageProjectUrl>https://github.com/HetCreep/PriconneALLTLFixup</PackageProjectUrl>
+		<OriginalAuthor>Dakari and Olegase</OriginalAuthor>
 
-  <ItemGroup>
-    <Compile Remove="Patches\**" />
-    <EmbeddedResource Remove="Patches\**" />
-    <None Remove="Patches\**" />
-  </ItemGroup>
+		<BepInDir Condition="'$(GITHUB_ACTIONS)' == 'true'">$(MSBuildProjectDirectory)\..\libs</BepInDir>
+		<BepInDir Condition="'$(GITHUB_ACTIONS)' != 'true'">$(UserProfile)\priconner\BepInEx</BepInDir>
+	</PropertyGroup>
 
-  <ItemGroup>
-    <Compile Include="Patches\TextRegistryPatch.cs" />
-    <Compile Include="Patches\NumberComponentPatch.cs" />
-    <Compile Include="Patches\TranslationCorePatch.cs" />
-    <Compile Include="Patches\UIComponentPatch.cs" />
-    <Compile Include="Patches\UILayoutPatch.cs" />
-    <Compile Include="Patches\WindowCorePatch.cs" />
-    <Compile Include="Patches\EngineBridgePatch.cs" />
-    <Compile Include="Patches\TextSafetyPatch.cs" />
-  </ItemGroup>
+	<ItemGroup>
+		<Compile Remove="Patches\**" />
+		<EmbeddedResource Remove="Patches\**" />
+		<None Remove="Patches\**" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="ILRepack.Lib.MSBuild.Task" Version="2.0.44.2">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-  </ItemGroup>
+	<ItemGroup>
+		<Compile Include="Patches\TextRegistryPatch.cs" />
+		<Compile Include="Patches\NumberComponentPatch.cs" />
+		<Compile Include="Patches\TranslationCorePatch.cs" />
+		<Compile Include="Patches\UIComponentPatch.cs" />
+		<Compile Include="Patches\UILayoutPatch.cs" />
+		<Compile Include="Patches\WindowCorePatch.cs" />
+		<Compile Include="Patches\EngineBridgePatch.cs" />
+		<Compile Include="Patches\TextSafetyPatch.cs" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <Reference Include="0Harmony">
-		<HintPath>$(UserProfile)\priconner\BepInEx\core\0Harmony.dll</HintPath>
-	</Reference>
-    <Reference Include="Assembly-CSharp">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\Assembly-CSharp.dll</HintPath>
-	</Reference>
-    <Reference Include="BepInEx.Core">
-		<HintPath>$(UserProfile)\priconner\BepInEx\core\BepInEx.Core.dll</HintPath>
-	</Reference>
-    <Reference Include="BepInEx.Unity.IL2CPP">
-		<HintPath>$(UserProfile)\priconner\BepInEx\core\BepInEx.Unity.IL2CPP.dll</HintPath>
-	</Reference>
-    <Reference Include="Fastenshtein">
-		<HintPath>$(UserProfile)\priconner\BepInEx\core\Fastenshtein.dll</HintPath>
-	</Reference>
-    <Reference Include="ICSharpCode.SharpZipLib">
-		<HintPath>$(UserProfile)\priconner\BepInEx\plugins\XUnity.AutoTranslator\ICSharpCode.SharpZipLib.dll</HintPath>
-	</Reference>
-    <Reference Include="Il2CppInterop.Common">
-		<HintPath>$(UserProfile)\priconner\BepInEx\core\Il2CppInterop.Common.dll</HintPath>
-	</Reference>
-    <Reference Include="Il2CppInterop.Generator">
-		<HintPath>$(UserProfile)\priconner\BepInEx\core\Il2CppInterop.Generator.dll</HintPath>
-	</Reference>
-    <Reference Include="Il2CppInterop.HarmonySupport">
-		<HintPath>$(UserProfile)\priconner\BepInEx\core\Il2CppInterop.HarmonySupport.dll</HintPath>
-	</Reference>
-    <Reference Include="Il2CppInterop.Runtime">
-		<HintPath>$(UserProfile)\priconner\BepInEx\core\Il2CppInterop.Runtime.dll</HintPath>
-	</Reference>
-    <Reference Include="Il2Cppmscorlib">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\Il2Cppmscorlib.dll</HintPath>
-	</Reference>
-    <Reference Include="Il2CppSystem">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\Il2CppSystem.dll</HintPath>
-	</Reference>
-    <Reference Include="SemanticVersioning">
-		<HintPath>$(UserProfile)\priconner\BepInEx\core\SemanticVersioning.dll</HintPath>
-	</Reference>
-    <Reference Include="SugoiOfflineTranslator">
-		<HintPath>$(UserProfile)\priconner\BepInEx\plugins\XUnity.AutoTranslator\Translators\SugoiOfflineTranslator.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.AIModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.AIModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.AndroidJNIModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.AndroidJNIModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.AnimationModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.AnimationModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.AssetBundleModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.AssetBundleModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.AudioModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.AudioModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.CoreModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.CoreModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.DirectorModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.DirectorModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.GameCenterModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.GameCenterModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.GridModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.GridModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.ImageConversionModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.ImageConversionModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.IMGUIModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.IMGUIModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.InputLegacyModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.InputLegacyModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.InputModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.InputModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.JSONSerializeModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.JSONSerializeModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.ParticleSystemModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.ParticleSystemModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.Physics2DModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.Physics2DModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.PhysicsModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.PhysicsModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.ScreenCaptureModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.ScreenCaptureModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.SharedInternalsModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.SharedInternalsModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.SpriteShapeModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.SpriteShapeModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.SubsystemsModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.SubsystemsModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.TerrainModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.TerrainModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.TextRenderingModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.TextRenderingModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.TilemapModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.TilemapModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.UI">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.UI.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.UIElementsNativeModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.UIElementsNativeModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.UIModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.UIModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.UnityAnalyticsModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.UnityAnalyticsModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.UnityWebRequestModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.UnityWebRequestModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.VFXModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.VFXModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.VideoModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.VideoModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.VRModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.VRModule.dll</HintPath>
-	</Reference>
-    <Reference Include="UnityEngine.XRModule">
-		<HintPath>$(UserProfile)\priconner\BepInEx\interop\UnityEngine.XRModule.dll</HintPath>
-	</Reference>
-    <Reference Include="XUnity.AutoTranslator.Plugin.BepInEx">
-		<HintPath>$(UserProfile)\priconner\BepInEx\plugins\XUnity.AutoTranslator\XUnity.AutoTranslator.Plugin.BepInEx.dll</HintPath>
-	</Reference>
-    <Reference Include="XUnity.AutoTranslator.Plugin.BepInEx-IL2CPP">
-		<HintPath>$(UserProfile)\priconner\BepInEx\plugins\XUnity.AutoTranslator\XUnity.AutoTranslator.Plugin.BepInEx-IL2CPP.dll</HintPath>
-	</Reference>
-    <Reference Include="XUnity.AutoTranslator.Plugin.Core">
-		<HintPath>$(UserProfile)\priconner\BepInEx\plugins\XUnity.AutoTranslator\XUnity.AutoTranslator.Plugin.Core.dll</HintPath>
-	</Reference>
-    <Reference Include="XUnity.AutoTranslator.Plugin.ExtProtocol">
-		<HintPath>$(UserProfile)\priconner\BepInEx\plugins\XUnity.AutoTranslator\XUnity.AutoTranslator.Plugin.ExtProtocol.dll</HintPath>
-	</Reference>
-    <Reference Include="XUnity.Common">
-		<HintPath>$(UserProfile)\priconner\BepInEx\core\XUnity.Common.dll</HintPath>
-	</Reference>
-    <Reference Include="XUnity.ResourceRedirector">
-		<HintPath>$(UserProfile)\priconner\BepInEx\plugins\XUnity.ResourceRedirector\XUnity.ResourceRedirector.dll</HintPath>
-	</Reference>
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="ILRepack.Lib.MSBuild.Task" Version="2.0.44.2">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+	</ItemGroup>
 
-  <Target Name="SyncVersionBeforeBuild" BeforeTargets="PreBuildEvent" Condition="Exists('$(ProjectDir)UpdateVersion.ps1')">
-    <Message Importance="High" Text="[Sync] 🔄 Starting Version Synchronization..." />
-    <Exec Command="powershell.exe -ExecutionPolicy Bypass -File &quot;$(ProjectDir)UpdateVersion.ps1&quot;" LogStandardErrorAsError="true" ContinueOnError="false" />
-    <Message Importance="High" Text="[Sync] ✨ Version Sync Task Completed." />
-  </Target>
+	<ItemGroup>
+		<Reference Include="0Harmony">
+			<HintPath>$(BepInDir)\core\0Harmony.dll</HintPath>
+		</Reference>		
+		<Reference Include="Assembly-CSharp">
+			<HintPath>$(BepInDir)\interop\Assembly-CSharp.dll</HintPath>
+		</Reference>
+		<Reference Include="BepInEx.Core">
+			<HintPath>$(BepInDir)\core\BepInEx.Core.dll</HintPath>
+		</Reference>
+		<Reference Include="BepInEx.Unity.IL2CPP">
+			<HintPath>$(BepInDir)\core\BepInEx.Unity.IL2CPP.dll</HintPath>
+		</Reference>
+		<Reference Include="Fastenshtein">
+			<HintPath>$(BepInDir)\core\Fastenshtein.dll</HintPath>
+		</Reference>
+		<Reference Include="ICSharpCode.SharpZipLib">
+			<HintPath>$(BepInDir)\plugins\XUnity.AutoTranslator\ICSharpCode.SharpZipLib.dll</HintPath>
+		</Reference>
+		<Reference Include="Il2CppInterop.Common">
+			<HintPath>$(BepInDir)\core\Il2CppInterop.Common.dll</HintPath>
+		</Reference>
+		<Reference Include="Il2CppInterop.Generator">
+			<HintPath>$(BepInDir)\core\Il2CppInterop.Generator.dll</HintPath>
+		</Reference>
+		<Reference Include="Il2CppInterop.HarmonySupport">
+			<HintPath>$(BepInDir)\core\Il2CppInterop.HarmonySupport.dll</HintPath>
+		</Reference>
+		<Reference Include="Il2CppInterop.Runtime">
+			<HintPath>$(BepInDir)\core\Il2CppInterop.Runtime.dll</HintPath>
+		</Reference>
+		<Reference Include="Il2Cppmscorlib">
+			<HintPath>$(BepInDir)\interop\Il2Cppmscorlib.dll</HintPath>
+		</Reference>
+		<Reference Include="Il2CppSystem">
+			<HintPath>$(BepInDir)\interop\Il2CppSystem.dll</HintPath>
+		</Reference>
+		<Reference Include="SemanticVersioning">
+			<HintPath>$(BepInDir)\core\SemanticVersioning.dll</HintPath>
+		</Reference>
+		<Reference Include="SugoiOfflineTranslator">
+			<HintPath>$(BepInDir)\plugins\XUnity.AutoTranslator\Translators\SugoiOfflineTranslator.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.AIModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.AIModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.AndroidJNIModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.AndroidJNIModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.AnimationModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.AnimationModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.AssetBundleModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.AssetBundleModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.AudioModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.AudioModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.CoreModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.CoreModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.DirectorModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.DirectorModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.GameCenterModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.GameCenterModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.GridModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.GridModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.ImageConversionModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.ImageConversionModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.IMGUIModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.IMGUIModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.InputLegacyModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.InputLegacyModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.InputModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.InputModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.JSONSerializeModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.JSONSerializeModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.ParticleSystemModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.ParticleSystemModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.Physics2DModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.Physics2DModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.PhysicsModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.PhysicsModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.ScreenCaptureModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.ScreenCaptureModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.SharedInternalsModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.SharedInternalsModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.SpriteShapeModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.SpriteShapeModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.SubsystemsModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.SubsystemsModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.TerrainModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.TerrainModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.TextRenderingModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.TextRenderingModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.TilemapModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.TilemapModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.UI">
+			<HintPath>$(BepInDir)\interop\UnityEngine.UI.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.UIElementsNativeModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.UIElementsNativeModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.UIModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.UIModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.UnityAnalyticsModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.UnityAnalyticsModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.UnityWebRequestModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.UnityWebRequestModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.VFXModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.VFXModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.VideoModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.VideoModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.VRModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.VRModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.XRModule">
+			<HintPath>$(BepInDir)\interop\UnityEngine.XRModule.dll</HintPath>
+		</Reference>
+		<Reference Include="XUnity.AutoTranslator.Plugin.BepInEx">
+			<HintPath>$(BepInDir)\plugins\XUnity.AutoTranslator\XUnity.AutoTranslator.Plugin.BepInEx.dll</HintPath>
+		</Reference>
+		<Reference Include="XUnity.AutoTranslator.Plugin.BepInEx-IL2CPP">
+			<HintPath>$(BepInDir)\plugins\XUnity.AutoTranslator\XUnity.AutoTranslator.Plugin.BepInEx-IL2CPP.dll</HintPath>
+		</Reference>
+		<Reference Include="XUnity.AutoTranslator.Plugin.Core">
+			<HintPath>$(BepInDir)\plugins\XUnity.AutoTranslator\XUnity.AutoTranslator.Plugin.Core.dll</HintPath>
+		</Reference>
+		<Reference Include="XUnity.AutoTranslator.Plugin.ExtProtocol">
+			<HintPath>$(BepInDir)\plugins\XUnity.AutoTranslator\XUnity.AutoTranslator.Plugin.ExtProtocol.dll</HintPath>
+		</Reference>
+		<Reference Include="XUnity.Common">
+			<HintPath>$(BepInDir)\core\XUnity.Common.dll</HintPath>
+		</Reference>
+		<Reference Include="XUnity.ResourceRedirector">
+			<HintPath>$(BepInDir)\plugins\XUnity.ResourceRedirector\XUnity.ResourceRedirector.dll</HintPath>
+		</Reference>
+	</ItemGroup>
 
-  <Target Name="ILRepack" AfterTargets="Build">
-    <ItemGroup>
-      <InputAssemblies Include="$(OutputPath)$(TargetName).dll" />
-      <InputAssemblies Include="$(OutputPath)Fastenshtein.dll" />
-    </ItemGroup>
-    <ILRepack Parallel="true" InputAssemblies="@(InputAssemblies)" Internalize="true" TargetKind="SameAsPrimaryAssembly" OutputFile="$(OutputPath)$(TargetName).dll" />
-    <Delete Files="$(OutputPath)Fastenshtein.dll" />
-  </Target>
+	<Target Name="SyncVersionBeforeBuild" BeforeTargets="PreBuildEvent" Condition="Exists('$(ProjectDir)UpdateVersion.ps1')">
+		<Message Importance="High" Text="[Sync] 🔄 Starting Version Synchronization..." />
+		<Exec Command="powershell.exe -ExecutionPolicy Bypass -File &quot;$(ProjectDir)UpdateVersion.ps1&quot;" LogStandardErrorAsError="true" ContinueOnError="false" />
+		<Message Importance="High" Text="[Sync] ✨ Version Sync Task Completed." />
+	</Target>
 
-  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+	<Target Name="ILRepack" AfterTargets="Build">
 		<ItemGroup>
-		  <CoreDlls Include="@(Reference->'%(HintPath)')" Condition="$([System.String]::new('%(Reference.HintPath)').Contains('BepInEx\core'))" />
-		  <InteropDlls Include="@(Reference->'%(HintPath)')" Condition="$([System.String]::new('%(Reference.HintPath)').Contains('BepInEx\interop'))" />
-		  <PluginDlls Include="@(Reference->'%(HintPath)')" Condition="$([System.String]::new('%(Reference.HintPath)').Contains('BepInEx\plugins'))" />
+			<InputAssemblies Include="$(OutputPath)$(TargetName).dll" />
+			<InputAssemblies Include="$(OutputPath)Fastenshtein.dll" />
+		</ItemGroup>
+		<ILRepack Parallel="true" InputAssemblies="@(InputAssemblies)" Internalize="true" TargetKind="SameAsPrimaryAssembly" OutputFile="$(OutputPath)$(TargetName).dll" />
+		<Delete Files="$(OutputPath)Fastenshtein.dll" />
+	</Target>
+
+	<Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition="'$(GITHUB_ACTIONS)' != 'true'">
+		<ItemGroup>
+			<CoreDlls Include="@(Reference->'%(HintPath)')" Condition="$([System.String]::new('%(Reference.HintPath)').Contains('core'))" />
+			<InteropDlls Include="@(Reference->'%(HintPath)')" Condition="$([System.String]::new('%(Reference.HintPath)').Contains('interop'))" />
+			<PluginDlls Include="@(Reference->'%(HintPath)')" Condition="$([System.String]::new('%(Reference.HintPath)').Contains('plugins'))" />
 		</ItemGroup>
 
 		<Copy SourceFiles="@(CoreDlls)" DestinationFolder="$(ProjectDir)libs\core\" SkipUnchangedFiles="true" />
