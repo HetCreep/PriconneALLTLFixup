@@ -22,6 +22,7 @@
   <ItemGroup>
     <Compile Include="Patches\TextRegistryPatch.cs" />
     <Compile Include="Patches\TranslationCorePatch.cs" />
+    <Compile Include="Patches\UIComponentPatch.cs" />
     <Compile Include="Patches\WindowCorePatch.cs" />
     <Compile Include="Patches\EngineBridgePatch.cs" />
     <Compile Include="Patches\TextSafetyPatch.cs" />

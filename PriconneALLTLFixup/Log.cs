@@ -1,8 +1,5 @@
 ﻿using BepInEx.Logging;
-using System;
-using System.IO;
 using System.Runtime.CompilerServices;
-using System.Text;
 
 namespace PriconneALLTLFixup;
 
@@ -13,7 +10,7 @@ public static class Log
 
     public static bool IsActive => _internalSource != null;
 
-    public static bool IsDeveloperContext => ConfigurationManager.Core.DebugMode.Value;
+    public static bool IsDeveloperContext => ConfigManager.Core.DebugMode.Value;
     #endregion
 
     #region 2. System Integration

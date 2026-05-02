@@ -1,14 +1,9 @@
 ﻿using BepInEx;
 using BepInEx.Unity.IL2CPP;
 using Il2CppInterop.Runtime;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using UnityEngine;
@@ -165,7 +160,7 @@ public static class Util
     public static string GetXuatLanguage()
     {
         LinkTranslationEngine();
-        return _xuatLanguageGetter?.Invoke(_xuatInstance) ?? ConfigurationManager.Translation.Code.Value;
+        return _xuatLanguageGetter?.Invoke(_xuatInstance) ?? ConfigManager.Translation.Code.Value;
     }
     #endregion
 
@@ -178,7 +173,7 @@ public static class Util
     {
         try
         {
-            string lang = ConfigurationManager.Translation.Code.Value;
+            string lang = ConfigManager.Translation.Code.Value;
             string root = Path.GetDirectoryName(Paths.ConfigPath) ?? string.Empty;
             string fontDir = Path.Combine(root, "Translation", lang, "Font");
 
@@ -295,7 +290,7 @@ public static class Util
         return null;
     }
 
-    public class WaitUntilOrTimeout(float timeout, Func<bool> predicate) : CustomYieldInstruction
+    public class WaitUntilOrTimeoutInstruction(float timeout, Func<bool> predicate) : CustomYieldInstruction
     {
         private readonly float _endTime = Time.time + timeout;
         public override bool keepWaiting => Time.time < _endTime && !predicate();

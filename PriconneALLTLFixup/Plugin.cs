@@ -1,10 +1,6 @@
 using BepInEx;
 using BepInEx.Unity.IL2CPP;
-using HarmonyLib;
-using System;
 using System.Diagnostics;
-using System.Linq;
-using XUnity.AutoTranslator.Plugin.Core;
 
 namespace PriconneALLTLFixup;
 
@@ -37,7 +33,7 @@ public class Plugin : BasePlugin
 
         try
         {
-            ConfigurationManager.Initialize(Config);
+            ConfigManager.Initialize(Config);
 
             PriconneALLTLFixup.Log.Debug("Executing global asset pre-registration...");
             Util.PreloadGlobalResources();
@@ -45,7 +41,7 @@ public class Plugin : BasePlugin
             InitiatePatchDeployment();
 
             //InitializeSpecializedIntegrations();
-            ConfigurationManager.SynchronizePatches(_patchController);
+            ConfigManager.SynchronizePatches(_patchController);
 
             LogExecutionSummary();
         }
