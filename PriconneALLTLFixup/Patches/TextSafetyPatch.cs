@@ -1,6 +1,5 @@
-﻿using System.Reflection;
-using HarmonyLib;
-using PriconneALLTLFixup;
+﻿using HarmonyLib;
+using System.Reflection;
 
 namespace PriconneALLTLFixup.Patches;
 

@@ -1,9 +1,6 @@
-﻿using System;
-using System.Runtime.CompilerServices;
-using UnityEngine;
+﻿using Cute;
 using HarmonyLib;
-using Cute;
-using PriconneALLTLFixup;
+using UnityEngine;
 
 namespace PriconneALLTLFixup.Patches;
 
@@ -30,7 +27,7 @@ public static class WindowCorePatch
     [HarmonyWrapSafe]
     public static void InitializeWindow()
     {
-        if (!ConfigurationManager.Core.SystemIntegration.Value) return;
+        if (!ConfigManager.Core.SystemIntegration.Value) return;
 
         Log.Info("[Window] Initializing Core Display System...");
 
@@ -45,7 +42,7 @@ public static class WindowCorePatch
     [HarmonyPrefix]
     public static bool PrefixGetSize(StandaloneWindowResize __instance, ref Vector3 __result, int _width, int _height)
     {
-        if (!ConfigurationManager.Core.SystemIntegration.Value) return true;
+        if (!ConfigManager.Core.SystemIntegration.Value) return true;
 
         int finalW = (_width <= 128) ? __instance.windowLastWidth : _width;
         int finalH = (_height <= 72) ? __instance.windowLastHeight : _height;
@@ -56,7 +53,7 @@ public static class WindowCorePatch
 
     [HarmonyPatch(typeof(StandaloneWindowResize), "DisableMaximizebox")]
     [HarmonyPrefix]
-    public static bool PrefixDisableMaximize() => !ConfigurationManager.Core.SystemIntegration.Value;
+    public static bool PrefixDisableMaximize() => !ConfigManager.Core.SystemIntegration.Value;
     #endregion
 
     #region 4. Operational Logic
@@ -86,7 +83,7 @@ public static class WindowCorePatch
             var native = Screen.currentResolution;
             if (isInitialLoad || !Screen.fullScreen)
             {
-                var mode = ConfigurationManager.Core.DisplayMode.Value;
+                var mode = ConfigManager.Core.DisplayMode.Value;
                 Screen.SetResolution(native.width, native.height, mode);
                 Log.Debug($"[Window] Transitioning to {mode} ({native.width}x{native.height})");
             }

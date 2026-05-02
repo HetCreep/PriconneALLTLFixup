@@ -1,9 +1,7 @@
-﻿using System;
-using HarmonyLib;
-using UnityEngine;
+﻿using HarmonyLib;
 using Il2CppInterop.Runtime;
+using UnityEngine;
 using XUnity.AutoTranslator.Plugin.Core;
-using PriconneALLTLFixup;
 
 namespace PriconneALLTLFixup.Patches;
 
@@ -55,7 +53,7 @@ public static class EngineBridgePatch
         if (__instance == null) return;
         Plugin.AutoTranslatorPlugin = __instance;
 
-        if (!ConfigurationManager.Core.TranslatorIntegration.Value) return;
+        if (!ConfigManager.Core.TranslatorIntegration.Value) return;
 
         Log.Info("[Bridge] XUAT High-performance link established.");
 
@@ -69,10 +67,10 @@ public static class EngineBridgePatch
 
         if (!string.IsNullOrEmpty(xuatLang))
         {
-            ConfigurationManager.Translation.Code.Value = xuatLang;
+            ConfigManager.Translation.Code.Value = xuatLang;
             Log.Info($"[Bridge] Language synchronized to: {xuatLang}");
 
-            Util.SyncXuatLanguage(ConfigurationManager.Translation.Code.Value);
+            Util.SyncXuatLanguage(ConfigManager.Translation.Code.Value);
         }
     }
 

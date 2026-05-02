@@ -2,11 +2,6 @@
 using Elements;
 using Fastenshtein;
 using HarmonyLib;
-using PriconneALLTLFixup;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
@@ -30,7 +25,7 @@ public static class TranslationCorePatch
 
     private static string GetDictPath() => Path.Combine(
         Paths.BepInExRootPath, "Translation",
-        ConfigurationManager.Translation.Code.Value,
+        ConfigManager.Translation.Code.Value,
         "Other", "unit_names.txt");
 
     private static readonly Regex ColorRegex = new(@"[\[\(]([0-9A-Fa-fsS]{6,10})[\]\)]", RegexOptions.Compiled);
@@ -51,7 +46,7 @@ public static class TranslationCorePatch
 
         text = text.Sanitize();
 
-        if (!ConfigurationManager.Translation.TranslationRepair.Value) return true;
+        if (!ConfigManager.Translation.TranslationRepair.Value) return true;
 
         try
         {
@@ -179,11 +174,12 @@ public static class TranslationCorePatch
     private static string ApplyRot13(string input)
     {
         if (string.IsNullOrEmpty(input)) return input;
-        return Regex.Replace(input, "[a-zA-Z]", m => {
+        return Regex.Replace(input, "[a-zA-Z]", m =>
+        {
             char c = m.Value[0];
             int start = char.IsUpper(c) ? 'A' : 'a';
             return ((char)((c - start + 13) % 26 + start)).ToString();
         });
-    }    
+    }
     #endregion
 }

@@ -1,12 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using BepInEx;
+﻿using BepInEx;
 using Elements;
 using HarmonyLib;
-using PriconneALLTLFixup;
 
 namespace PriconneALLTLFixup.Patches;
 
@@ -23,7 +17,7 @@ public static class TextRegistryPatch
 
     private static string GetOtherFilePath(string fileName) => Path.Combine(
         Paths.BepInExRootPath, "Translation",
-        ConfigurationManager.Translation.Code.Value,
+        ConfigManager.Translation.Code.Value,
         "Other", fileName);
 
     internal struct ProcessedItem
@@ -89,7 +83,7 @@ public static class TextRegistryPatch
                     }
                 }
             }
-            Log.Info($"[Registry] Static text mapping successfully loaded for: {ConfigurationManager.Translation.Code.Value}");
+            Log.Info($"[Registry] Static text mapping successfully loaded for: {ConfigManager.Translation.Code.Value}");
         }
         catch (Exception ex)
         {
@@ -104,8 +98,8 @@ public static class TextRegistryPatch
     [HarmonyWrapSafe]
     public static void PrefixSkillInit(Il2CppSystem.Collections.Generic.List<ValueTuple<PartsUnitSkillDetailTextPlate.ePlateType, string>> _detailTextList)
     {
-        if (!ConfigurationManager.Core.TranslatorIntegration.Value ||
-            !ConfigurationManager.UI.SmartSkillLayout.Value) return;
+        if (!ConfigManager.Core.TranslatorIntegration.Value ||
+            !ConfigManager.UI.SmartSkillLayout.Value) return;
 
         if (!Util.IsSafe(_detailTextList)) return;
 
