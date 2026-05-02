@@ -1,10 +1,8 @@
 #nullable enable
-
 using BepInEx;
 using BepInEx.Unity.IL2CPP;
 using System.Diagnostics;
 using System.Linq;
-using BepInEx.Logging;
 using XUnity.AutoTranslator.Plugin.Core;
 
 namespace PriconneALLTLFixup;
@@ -21,63 +19,56 @@ public class Plugin : BasePlugin
     #region 2. Global Accessor
     public static Plugin Instance { get; private set; } = null!;
 
-    public static AutoTranslationPlugin? Xuat { get; internal set; } = null!;
+    public static AutoTranslationPlugin? Xuat { get; internal set; }
     #endregion
 
     #region 3. Lifecycle Management (Load/Unload)
     public override void Load()
     {
         Instance = this;
-
         FLog.Initialize(base.Log);
-
-        if (!VerifySystemIntegrity()) return;
 
         try
         {
             ConfigManager.Initialize(Config);
-
-            FLog.Info($"=== {MyPluginInfo.Name} v{MyPluginInfo.Version} Operational ===");
-
-            SetupEnvironmentEncoding();
-            CoroutineStarter.SetupMainThread();
-
-            FLog.Debug("Pre-registering global assets (Fonts/Atlases)...");
-            Util.PreloadGlobalResources();
-
-            FLog.Info("Deploying Harmony patches...");
-            InitiatePatchDeployment();
-
-            ConfigManager.SynchronizePatches(_patchController);
-
-            LogExecutionSummary();
+            FLog.Info("Config initialized successfully.");
         }
         catch (Exception ex)
         {
-            FLog.Error("Critical failure during plugin Load() sequence.", ex);
+            UnityEngine.Debug.LogError($"[Fixup] Config Fail: {ex.Message}");
+        }
+
+        if (!VerifySystemIntegrity())
+        {
+            FLog.Warn("System integrity check failed. Plugin will stop, but config was created.");
+            return;
+        }
+
+        try
+        {
+            SetupEnvironmentEncoding();
+            CoroutineStarter.SetupMainThread();
+            Util.PreloadGlobalResources();
+            InitiatePatchDeployment();
+            ConfigManager.SynchronizePatches(_patchController);
+        }
+        catch (Exception ex)
+        {
+            FLog.Error("Load error", ex);
         }
     }
 
     private bool VerifySystemIntegrity()
     {
-        try
-        {
-            var loader = IL2CPPChainloader.Instance;
-            if (loader == null || loader.Plugins == null) return false;
+        var loader = IL2CPPChainloader.Instance;
+        if (loader == null || loader.Plugins == null) return false;
 
-            const string xuatGuid = "com.github.bbepis.xunity.autotranslator";
-            if (!loader.Plugins.ContainsKey(xuatGuid))
-            {
-                FLog.Fatal("XUnity.AutoTranslator is missing! This mod requires it to function.");
-                return false;
-            }
-            return true;
-        }
-        catch (Exception ex)
+        if (!loader.Plugins.ContainsKey("com.github.bbepis.xunity.autotranslator"))
         {
-            UnityEngine.Debug.LogError($"[Fixup] Integrity Check Crash: {ex.Message}");
+            FLog.Fatal("XUnity.AutoTranslator missing!");
             return false;
         }
+        return true;
     }
 
     public override bool Unload()
