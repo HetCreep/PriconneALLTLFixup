@@ -121,7 +121,7 @@ public static class TextRegistryPatch
                 {
                     var lastIdx = StoredSkillTexts.Count - 1;
                     var mergedItem = StoredSkillTexts[lastIdx];
-                    mergedItem.Text += content;
+                    mergedItem.Text = string.Concat(mergedItem.Text, content);
                     StoredSkillTexts[lastIdx] = mergedItem;
 
                     _detailTextList.RemoveAt(i);

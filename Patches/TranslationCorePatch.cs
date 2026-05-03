@@ -174,12 +174,21 @@ public static class TranslationCorePatch
     private static string ApplyRot13(string input)
     {
         if (string.IsNullOrEmpty(input)) return input;
-        return Regex.Replace(input, "[a-zA-Z]", m =>
+
+        char[] buffer = input.ToCharArray();
+        for (int i = 0; i < buffer.Length; i++)
         {
-            char c = m.Value[0];
-            int start = char.IsUpper(c) ? 'A' : 'a';
-            return ((char)((c - start + 13) % 26 + start)).ToString();
-        });
+            char c = buffer[i];
+            if (c >= 'a' && c <= 'z')
+            {
+                buffer[i] = (char)((c - 'a' + 13) % 26 + 'a');
+            }
+            else if (c >= 'A' && c <= 'Z')
+            {
+                buffer[i] = (char)((c - 'A' + 13) % 26 + 'A');
+            }
+        }
+        return new string(buffer);
     }
     #endregion
 }

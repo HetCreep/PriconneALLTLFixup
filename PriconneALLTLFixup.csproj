@@ -15,8 +15,11 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<Compile Remove="libs\**" />
 		<Compile Remove="Patches\**" />
+		<EmbeddedResource Remove="libs\**" />
 		<EmbeddedResource Remove="Patches\**" />
+		<None Remove="libs\**" />
 		<None Remove="Patches\**" />
 	</ItemGroup>
 
@@ -204,6 +207,17 @@
 		<Message Importance="High" Text="[Sync] 🔄 Starting Version Synchronization..." />
 		<Exec Command="powershell.exe -ExecutionPolicy Bypass -File &quot;$(ProjectDir)UpdateVersion.ps1&quot;" LogStandardErrorAsError="true" ContinueOnError="false" />
 		<Message Importance="High" Text="[Sync] ✨ Version Sync Task Completed." />
+	</Target>
+
+	<Target Name="ILRepack" AfterTargets="Build">
+		<ItemGroup>
+			<InputAssemblies Include="$(OutputPath)$(TargetName).dll" />
+			<InputAssemblies Include="$(OutputPath)Fastenshtein.dll" />
+		</ItemGroup>
+
+		<ILRepack Parallel="true" InputAssemblies="@(InputAssemblies)" Internalize="false" TargetKind="SameAsPrimaryAssembly" OutputFile="$(OutputPath)$(TargetName).dll" LibraryPath="$(BepInDir)\core;$(BepInDir)\interop;$(BepInDir)\plugins" />
+
+		<Delete Files="$(OutputPath)Fastenshtein.dll" />
 	</Target>
 
 	<Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition="'$(GITHUB_ACTIONS)' != 'true'">

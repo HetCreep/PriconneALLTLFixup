@@ -143,11 +143,21 @@ public class CoroutineStarter : MonoBehaviour
 
     private static IEnumerator DelayedRoutine(float seconds, Action action)
     {
-        if (!_waitCache.TryGetValue(seconds, out var wait))
+        float roundedSeconds = (float)Math.Round(seconds, 2);
+
+        if (!_waitCache.TryGetValue(roundedSeconds, out var wait))
         {
-            wait = new WaitForSeconds(seconds);
-            _waitCache[seconds] = wait;
+            wait = new WaitForSeconds(roundedSeconds);
+
+            if (_waitCache.Count > 100)
+            {
+                _waitCache.Clear();
+                FLog.Debug("[Coroutine] Wait cache exceeded limit and was cleared.");
+            }
+
+            _waitCache[roundedSeconds] = wait;
         }
+
         yield return wait;
         InvokeSafe(action);
     }

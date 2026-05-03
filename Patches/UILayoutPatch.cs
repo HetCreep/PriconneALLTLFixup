@@ -1,8 +1,7 @@
-﻿using System.Collections;
-using Elements;
+﻿using Elements;
 using HarmonyLib;
+using System.Collections;
 using UnityEngine;
-using BepInEx.Unity.IL2CPP.Utils.Collections;
 
 namespace PriconneALLTLFixup.Patches;
 
@@ -97,3 +96,6 @@ public static class UILayoutPatch
     }
     #endregion
 }
+
+// 3. การอัปเกรด "ลูกศรฉลาด" (Smart Arrow) ให้แม่นยำ 100%
+// ในเมื่อเราเห็นแล้วว่า PartsQuestDetailBase มีตัวแปรชื่อ questNameLabel อยู่แล้ว เราไม่จำเป็นต้องใช้ transform.Find เพื่อหาชื่อด่านอีกต่อไปครับ เราสามารถเรียกใช้ตัวแปรนี้ได้โดยตรง ซึ่ง "เร็วและเสถียรที่สุด" (ตามกฎข้อ 1 และ 9)

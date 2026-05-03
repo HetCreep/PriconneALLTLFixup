@@ -2,7 +2,6 @@
 using BepInEx;
 using BepInEx.Unity.IL2CPP;
 using System.Diagnostics;
-using System.Linq;
 using XUnity.AutoTranslator.Plugin.Core;
 
 namespace PriconneALLTLFixup;
