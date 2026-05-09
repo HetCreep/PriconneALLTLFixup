@@ -294,6 +294,11 @@ public static class ConfigManager
             S, "ModVersion", MyPluginInfo.Version,
             "Current mod version — read-only reference field written at startup.");
 
+        /// <summary>Read-only field linking to the project repository.</summary>
+        public static readonly ConfigSetting<string> RepoUrl = new(
+            S, "RepositoryUrl", MyPluginInfo.RepoUrl,
+            "Project repository URL — read-only reference field.");
+
         /// <summary>Enables Win32 OS integration: window styles, hotkeys, drag-and-drop.</summary>
         public static readonly PatchToggleSetting SystemIntegration = new(
             S, "EnableSystemEnvironment", true,

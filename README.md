@@ -163,6 +163,7 @@ All patch toggles support **live hot-reload** — changes take effect immediatel
 | :--- | :---: | :--- |
 | `DeveloperLogs` | `false` | Enables verbose `FLog.Debug` output with call-site attribution. **Disable in production.** |
 | `ModVersion` | *(current)* | Read-only reference field recording the current mod version. |
+| `RepositoryUrl` | *(url)* | Read-only reference field linking to the project repository. |
 | `EnableSystemEnvironment` | `true` | Enables Win32 window integration: resize handles, maximize button, F11/Alt+Enter hotkeys. |
 | `DisplayMode` | `1` | Target mode for F11/Alt+Enter toggle: `0`=FullScreen, `1`=Borderless, `2`=Maximized, `3`=Windowed. **Does NOT affect startup** — the game always boots with its own display settings. |
 | `EnableTranslatorSync` | `true` | **(silent)** Syncs language code and XUAT endpoint state at startup. |
@@ -174,24 +175,24 @@ All patch toggles support **live hot-reload** — changes take effect immediatel
 
 ### Patch Modules
 
-| Module | Class | Trigger Point | Toggle |
+| Module | Class | Trigger | Toggle |
 | :--- | :--- | :--- | :---: |
-| **Translation Repair** | `TranslationCorePatch` | `AutoTranslationPlugin::SetText` (Prefix) + `TranslateOrQueueWebJobImmediate` | `EnableTranslationRepair` |
-| **Text Safety Guard** | `TextSafetyPatch` | `TextTranslationInfo::ResizeUI` (Prefix) | `EnableStabilityGuard` |
-| **XUAT Bridge & Universal Gate** | `EngineBridgePatch` | `AutoTranslationPlugin::Initialize` (Prefix+Postfix) — removes ASCII filter, syncs endpoint, protects font assets | `EnableTranslatorSync` |
-| **Number Formatting** | `NumberComponentPatch` | `UILabel` setter, `CustomUILabel::SetText` | `EnableNumberFormatting` |
-| **UI Style, Font & Load Guard** | `UIComponentPatch` | `CustomUILabel::Awake` (font assign + null-font guard), `UILabel::ProcessText`, `TextMesh::text`, `FlTextParameter::_ApplyData` — font resolved via 3-tier path fallback | `EnableFontReplacement` / `EnableUIResizer` |
-| **Skill Layout** | `TextRegistryPatch` | `ConstTextData::CreateInstanceAndLoadInitialize`, `PartsUnitSkillDetailTextController::Initialize` | `EnableSmartSkillLayout` |
-| **UI Layout** | `UILayoutPatch` | 30+ hooks across menus, shops, battle overlays, profile cards, header titles | `EnableUILayout` |
-| **Battle Bubbles** | `UIBubblePatch` | `LifeGaugeController::IndicateSkillName`, `PartsRoomBalloon::ShowSpeakingText`, `SpineDramaController` | `EnableBubbleFixes` |
-| **Story System** | `StorySystemPatch` | `StoryManager::execCommand`, `StoryManager::setPrintText`, `StoryScene::onClickNextCommand`, `TutorialStoryManager::*`, `StartStory` | `EnableStoryFixes` |
-| **Subtitle System** | `SubtitleSystemPatch` | `MovieManager::Load`, `SubtitleManager::Initialize`, `SubtitleManager::SetSubTitleText`, `MovieManager::dispSubTitle` | `EnableSubtitleFixes` |
-| **Shop Search** | `ShopSearchPatch` | `PartsShopFooter` lambda, `PartsDialogItemSelect::searchItemExec`, `ShopUtility::GetMaterialSearchTextFormat` | `EnableMultiLangSearch` |
-| **Sprite Atlas** | `SpriteAtlasPatch` | `UIAtlas::GetSprite`, `UIAtlas::Init`, `UISprite::spriteName` | `EnableAtlasRedirect` |
-| **Window & OS** | `WindowSystemPatch` | `BootApp::Start`, `StandaloneWindowResize::*`, `WndProc` | `EnableSystemEnvironment` |
-| **Sugoi Lifecycle & Cleanup** | `SugoiExitPatch` | `SugoiOfflineTranslatorEndpoint::StartProcess`, `Toolbox::ApplicationQuit`, `MovieManager::OnDestroy` | `EnableSugoiCleanup` |
-| **Gameplay QoL** | `GameplayQoLPatch` | `UnitFilterDialogController::Open`, `MemoryPieceDealConfirmController`, `UnitRarityUp`, `BdayData` | `EnableAutoFocusSearch` / `EnableBirthdayEveryday` |
-| **Log Noise Filter** | `LogFilter` | Wraps `BepInEx.DiskLogListener` — suppresses HarmonyX IL2CPP assembly-scan warnings from `LogOutput.log` | *(always active)* |
+| **Translation Repair** | `TranslationCorePatch` | `AutoTranslationPlugin::SetText` (Prefix)<br>+ `TranslateOrQueueWebJobImmediate` | `EnableTranslationRepair` |
+| **Text Safety Guard** | `TextSafetyPatch` | `TextTranslationInfo::ResizeUI`<br>(Prefix) | `EnableStabilityGuard` |
+| **XUAT Bridge &<br>Universal Gate** | `EngineBridgePatch` | `AutoTranslationPlugin::Initialize`<br>(Prefix+Postfix)<br>— removes ASCII filter | `EnableTranslatorSync` |
+| **Number Formatting** | `NumberComponentPatch` | `UILabel` setter,<br>`CustomUILabel::SetText` | `EnableNumberFormatting` |
+| **UI Style, Font &<br>Load Guard** | `UIComponentPatch` | `CustomUILabel::Awake`<br>`UILabel::ProcessText`<br>`TextMesh::text`<br>`FlTextParameter::_ApplyData` | `EnableFontReplacement`<br>/ `EnableUIResizer` |
+| **Skill Layout** | `TextRegistryPatch` | `ConstTextData::`<br>`CreateInstanceAndLoadInitialize`<br>`PartsUnitSkillDetailTextController::`<br>`Initialize` | `EnableSmartSkillLayout` |
+| **UI Layout** | `UILayoutPatch` | 30+ hooks across menus, shops,<br>battle overlays, profile cards | `EnableUILayout` |
+| **Battle Bubbles** | `UIBubblePatch` | `LifeGaugeController::`<br>`IndicateSkillName`<br>`PartsRoomBalloon::`<br>`ShowSpeakingText` | `EnableBubbleFixes` |
+| **Story System** | `StorySystemPatch` | `StoryManager::execCommand`<br>`StoryManager::setPrintText`<br>`TutorialStoryManager::*` | `EnableStoryFixes` |
+| **Subtitle System** | `SubtitleSystemPatch` | `MovieManager::Load`<br>`SubtitleManager::Initialize`<br>`SetSubTitleText` | `EnableSubtitleFixes` |
+| **Shop Search** | `ShopSearchPatch` | `PartsShopFooter` lambda<br>`searchItemExec`<br>`GetMaterialSearchTextFormat` | `EnableMultiLangSearch` |
+| **Sprite Atlas** | `SpriteAtlasPatch` | `UIAtlas::GetSprite`<br>`UIAtlas::Init`<br>`UISprite::spriteName` | `EnableAtlasRedirect` |
+| **Window & OS** | `WindowSystemPatch` | `BootApp::Start`<br>`StandaloneWindowResize::*`<br>`WndProc` | `EnableSystemEnvironment` |
+| **Sugoi Lifecycle** | `SugoiExitPatch` | `SugoiOfflineTranslatorEndpoint::`<br>`StartProcess`<br>`Toolbox::ApplicationQuit` | `EnableSugoiCleanup` |
+| **Gameplay QoL** | `GameplayQoLPatch` | `UnitFilterDialogController::Open`<br>`MemoryPieceDealConfirmController` | `EnableAutoFocusSearch`<br>/ `EnableBirthdayEveryday` |
+| **Log Noise Filter** | `LogFilter` | Wraps `DiskLogListener`<br>— suppresses HarmonyX warnings | *(always active)* |
 
 ### Core Utility Library (`Util.cs`)
 
