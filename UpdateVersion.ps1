@@ -21,7 +21,9 @@ if ([string]::IsNullOrWhiteSpace($version)) {
     exit 1
 }
 
-$targetFile = Get-ChildItem -Path $PSScriptRoot -Include "MyPluginInfo.cs", "PluginInfo.cs", "Plugin.cs" -Recurse | Select-Object -First 1
+$targetFile = Get-ChildItem -Path $PSScriptRoot -Include "MyPluginInfo.cs", "PluginInfo.cs", "Plugin.cs" -Recurse | 
+              Where-Object { $_.FullName -notmatch "\\(bin|obj)\\" } | 
+              Select-Object -First 1
 
 if ($null -eq $targetFile) {
     Write-Host "[Sync] ❌ Target C# file not found" -ForegroundColor Red
@@ -29,12 +31,15 @@ if ($null -eq $targetFile) {
 }
 
 $targetPath = $targetFile.FullName
-$content = Get-Content $targetPath -Raw
+$content = Get-Content $targetPath -Raw -Encoding UTF8
 $newContent = $content
 
 function Update-Metadata($regexName, $newValue, $currentContent) {
     if ([string]::IsNullOrWhiteSpace($newValue)) { return $currentContent }
-    $pattern = "(public const string $regexName\s*=\s*`")(.+?)(`")"
+    
+    $quote = [char]34
+    $pattern = "(public\s+const\s+string\s+$regexName\s*=\s*$quote)(.+?)($quote)"
+    
     return [regex]::Replace($currentContent, $pattern, "${1}$newValue${3}")
 }
 
@@ -45,7 +50,7 @@ $newContent = Update-Metadata "RepoUrl" $repoUrl $newContent
 $newContent = Update-Metadata "OriginalAuthor" $originalAuthor $newContent
 
 if ($content -ne $newContent) {
-    $newContent.TrimEnd() + [System.Environment]::NewLine | Set-Content $targetPath -NoNewline
+    $newContent.TrimEnd() + [System.Environment]::NewLine | Set-Content $targetPath -NoNewline -Encoding UTF8
     Write-Host "[Sync] ✅ Metadata updated successfully in $($targetFile.Name)!" -ForegroundColor Green
     Write-Host "[Sync] 🚀 New Version: $version | Author: $author" -ForegroundColor Cyan
 } else {

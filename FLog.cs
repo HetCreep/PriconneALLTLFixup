@@ -1,4 +1,5 @@
-﻿using BepInEx.Logging;
+using BepInEx.Logging;
+using System.IO;
 using System.Runtime.CompilerServices;
 
 namespace PriconneALLTLFixup;
@@ -6,11 +7,13 @@ namespace PriconneALLTLFixup;
 public static class FLog
 {
     #region 1. Internal Infrastructure
-    private static ManualLogSource _internalSource;
+    private static ManualLogSource _internalSource;
 
     public static bool IsActive => _internalSource != null;
 
-    public static bool IsDeveloperContext => ConfigManager.Core.DebugMode.Value;
+    private static bool _cachedDebugMode;
+
+    public static bool IsDeveloperContext => _cachedDebugMode;
     #endregion
 
     #region 2. System Integration
@@ -18,6 +21,11 @@ public static class FLog
     {
         if (_internalSource != null) return;
         _internalSource = source;
+
+        _cachedDebugMode = ConfigManager.Core.DebugMode.Value;
+        ConfigManager.OnChanged += () => {
+            _cachedDebugMode = ConfigManager.Core.DebugMode.Value;
+        };
     }
     #endregion
 
@@ -25,9 +33,14 @@ public static class FLog
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Info(object msg) => Dispatch(LogLevel.Info, msg);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Info(string msg) => Dispatch(LogLevel.Info, msg);
+
     public static void Info(string template, params object[] args)
     {
+        if (_internalSource == null) return;
         if (args == null || args.Length == 0) { Dispatch(LogLevel.Info, template); return; }
+
         try { Dispatch(LogLevel.Info, string.Format(template, args)); }
         catch { Dispatch(LogLevel.Info, $"[FormatErr] {template}"); }
     }

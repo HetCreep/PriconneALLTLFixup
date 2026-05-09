@@ -1,4 +1,4 @@
-﻿using BepInEx;
+using BepInEx;
 using BepInEx.Unity.IL2CPP;
 using Il2CppInterop.Runtime;
 using System.Linq.Expressions;
@@ -18,12 +18,15 @@ public static class Util
     #endregion
 
     #region MODULE A: Text & Translation Engine
-    private static readonly Regex ColorTagRegex = new(@"\[([A-Fa-f0-9]{6})\]", RegexOptions.Compiled);
-    private static readonly Regex ColorEndRegex = new(@"\[-\]", RegexOptions.Compiled);
     private static readonly Regex MarkCleanupRegex = new(@"(\p{Mn})\1+", RegexOptions.Compiled);
+    // Strip dangling TMPro color tags that leaked into NGUI text via translation engine
+    private static readonly Regex StrayTMProColorOpenRegex  = new(@"<color=#[0-9A-Fa-f]{3,8}>", RegexOptions.Compiled);
+    private static readonly Regex StrayTMProColorCloseRegex = new(@"</color>", RegexOptions.Compiled);
+    // Strip dangling Unity size/bold/italic tags that also leak
+    private static readonly Regex StrayTMProTagRegex = new(@"</?(?:size|b|i|s|u)(?:=\d+)?>", RegexOptions.Compiled);
 
     private static readonly Dictionary<string, string> _sanitizedPool = new(4000);
-    private static readonly List<string> _poolHistory = new(4000);
+    private static readonly Queue<string> _poolHistory = new(4000);
     private static readonly Dictionary<int, string> _staticTranslationMap = new(1024);
 
     [ThreadStatic] private static StringBuilder _processingBuffer;
@@ -42,8 +45,10 @@ public static class Util
 
         string result = _processingBuffer.ToString();
         result = MarkCleanupRegex.Replace(result, "$1");
-        result = ColorTagRegex.Replace(result, "<color=#$1>");
-        result = ColorEndRegex.Replace(result, "</color>");
+        // Strip stray TMPro tags that translation engines sometimes inject into NGUI labels
+        result = StrayTMProColorOpenRegex.Replace(result, "");
+        result = StrayTMProColorCloseRegex.Replace(result, "");
+        result = StrayTMProTagRegex.Replace(result, "");
 
         UpdateSanitizedPool(input, result);
         return result;
@@ -56,20 +61,42 @@ public static class Util
             if (_sanitizedPool.Count >= 4000)
             {
                 int range = Math.Min(100, _poolHistory.Count);
-                for (int i = 0; i < range; i++) { _sanitizedPool.Remove(_poolHistory[0]); _poolHistory.RemoveAt(0); }
+                for (int i = 0; i < range; i++)
+                {
+                    if (_poolHistory.TryDequeue(out var oldestKey))
+                    {
+                        _sanitizedPool.Remove(oldestKey);
+                    }
+                }
                 FLog.Debug($"[Memory] Purged {range} cache entries to optimize heap.");
             }
+            if (!_sanitizedPool.ContainsKey(key))
+                _poolHistory.Enqueue(key);
             _sanitizedPool[key] = val;
-            _poolHistory.Add(key);
         }
     }
     #endregion
 
     #region MODULE B: Universal UI & Duck Typing
-    private static readonly Dictionary<(Type, string), PropertyInfo> _memberCache = new(256);
+    private static readonly Dictionary<(Type, string), Action<Component, object>> _setterCache = new(256);
 
-    public static bool IsTextElement(this Component c) => c != null &&
-        (c is UnityEngine.UI.Text || c is TextMesh || c.GetType().Name.StartsWith("TextMeshPro"));
+    private static readonly Dictionary<Type, bool> _textElementTypeCache = new(32);
+
+    public static bool IsTextElement(this Component c)
+    {
+        if (c == null) return false;
+        if (c is UnityEngine.UI.Text || c is TextMesh) return true;
+
+        Type t = c.GetType();
+        lock (_globalSync)
+        {
+            if (_textElementTypeCache.TryGetValue(t, out bool isText)) return isText;
+
+            isText = t.Name.StartsWith("TextMeshPro");
+            _textElementTypeCache[t] = isText;
+            return isText;
+        }
+    }
 
     public static void UpdateTextContent(this Component c, string text)
     {
@@ -82,9 +109,41 @@ public static class Util
     private static void ReflectiveSet(Component c, string name, object value)
     {
         var key = (c.GetType(), name);
-        PropertyInfo prop;
-        lock (_globalSync) { if (!_memberCache.TryGetValue(key, out prop)) _memberCache[key] = prop = c.GetType().GetProperty(name, UniversalFlags); }
-        prop?.SetValue(c, value);
+        Action<Component, object> setter;
+
+        lock (_globalSync)
+        {
+            if (!_setterCache.TryGetValue(key, out setter))
+            {
+                var prop = c.GetType().GetProperty(name, UniversalFlags);
+                if (prop != null && prop.CanWrite)
+                {
+                    setter = CreateSetter(prop);
+                    _setterCache[key] = setter;
+                }
+                else
+                {
+                    _setterCache[key] = null;
+                }
+            }
+        }
+
+        setter?.Invoke(c, value);
+    }
+
+    private static Action<Component, object> CreateSetter(PropertyInfo prop)
+    {
+        var targetParam = Expression.Parameter(typeof(Component), "target");
+        var valueParam = Expression.Parameter(typeof(object), "value");
+
+        var castTarget = Expression.Convert(targetParam, prop.DeclaringType!);
+        var castValue = Expression.Convert(valueParam, prop.PropertyType);
+
+        var propertyAccess = Expression.Property(castTarget, prop);
+
+        var assign = Expression.Assign(propertyAccess, castValue);
+
+        return Expression.Lambda<Action<Component, object>>(assign, targetParam, valueParam).Compile();
     }
     #endregion
 
@@ -149,10 +208,37 @@ public static class Util
     {
         LinkTranslationEngine();
 
+        // 1st: try reflect from live XUAT plugin instance (works if Settings property exists)
         string detected = _xuatLanguageGetter?.Invoke(_xuatInstance);
-
         if (!string.IsNullOrEmpty(detected)) return detected;
 
+        // 2nd: read AutoTranslatorConfig.ini directly — most reliable fallback
+        try
+        {
+            string iniPath = Path.Combine(BepInEx.Paths.ConfigPath, "AutoTranslatorConfig.ini");
+            if (File.Exists(iniPath))
+            {
+                bool inGeneral = false;
+                foreach (string line in File.ReadLines(iniPath))
+                {
+                    string trimmed = line.Trim();
+                    if (trimmed.Equals("[General]", StringComparison.OrdinalIgnoreCase)) { inGeneral = true; continue; }
+                    if (trimmed.StartsWith("[") && inGeneral) break; // left [General]
+                    if (inGeneral && trimmed.StartsWith("Language=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string val = trimmed.Substring("Language=".Length).Trim();
+                        if (!string.IsNullOrEmpty(val))
+                        {
+                            FLog.Debug($"[Bridge] Language read from AutoTranslatorConfig.ini: '{val}'");
+                            return val;
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex) { FLog.Debug($"[Bridge] AutoTranslatorConfig.ini read failed: {ex.Message}"); }
+
+        // 3rd: fall back to our own config default
         return ConfigManager.Translation.Code.DefaultValue;
     }
 
@@ -197,7 +283,7 @@ public static class Util
 
             if (!Directory.Exists(fontDir)) return;
 
-            string charset = ExpandCharsetRange("A-Z a-z 0-9 .,!?:;()[]+-*/=%$#@&_\"'<>|\\ " + GetLanguageCharset(lang));
+            string charset = GetHybridCharset(fontDir);
 
             foreach (var file in Directory.GetFiles(fontDir, "*.unity3d"))
             {
@@ -222,29 +308,61 @@ public static class Util
         catch (Exception ex) { FLog.Error("Global font preloading failed.", ex); }
     }
 
+    private static string GetHybridCharset(string fontDir)
+    {
+        string baseCharset = ExpandCharsetRange("A-Z a-z 0-9 .,!?:;()[]+-*/=%$#@&_\"'<>|\\ \u3040-\u30FF\u4E00-\u9FFF");
+
+        StringBuilder combinedCharset = new StringBuilder(baseCharset);
+
+        string customPath = Path.Combine(fontDir, "charset.txt");
+        if (File.Exists(customPath))
+        {
+            try
+            {
+                string fileContent = File.ReadAllText(customPath, Encoding.UTF8);
+
+                string cleanedContent = fileContent.Replace("\r", "").Replace("\n", "").Replace(" ", "");
+
+                string unescapedContent = System.Text.RegularExpressions.Regex.Unescape(cleanedContent);
+
+                combinedCharset.Append(ExpandCharsetRange(unescapedContent));
+
+                FLog.Info($"[Assets] Successfully loaded additional characters from {customPath}");
+            }
+            catch (Exception ex)
+            {
+                FLog.Warn($"[Assets] Failed to read custom charset.txt: {ex.Message}");
+            }
+        }
+
+        return combinedCharset.ToString();
+    }
+
     private static string ExpandCharsetRange(string input)
     {
+        if (string.IsNullOrEmpty(input)) return string.Empty;
+
         StringBuilder sb = new();
         for (int i = 0; i < input.Length; i++)
         {
             if (i + 2 < input.Length && input[i + 1] == '-')
             {
-                for (char c = input[i]; c <= input[i + 2]; c++) sb.Append(c);
+                char startChar = input[i];
+                char endChar = input[i + 2];
+
+                if (startChar <= endChar)
+                {
+                    for (char c = startChar; c <= endChar; c++) sb.Append(c);
+                }
                 i += 2;
             }
-            else sb.Append(input[i]);
+            else
+            {
+                sb.Append(input[i]);
+            }
         }
         return sb.ToString();
     }
-
-    private static string GetLanguageCharset(string lang) => lang switch
-    {
-        "th" => "\u0E01-\u0E7F",
-        "ja" => "\u3040-\u30FF\u4E00-\u9FFF",
-        "ru" => "\u0400-\u04FF",
-        "vi" or "vn" => "\u00C0-\u1EF9",
-        _ => ""
-    };
 
     public static void RegisterFallback(UnityEngine.Object main, UnityEngine.Object fallback)
     {
@@ -265,7 +383,7 @@ public static class Util
                 FLog.Debug($"[Assets] Linked fallback: {fallback.name} -> {main.name}");
             }
         }
-        catch { /*  */ }
+        catch (Exception ex) { FLog.Debug($"[Assets] RegisterFallback failed: {ex.Message}"); }
     }
     #endregion
 
@@ -303,8 +421,22 @@ public static class Util
 
     public static Transform FindDeep(this Transform p, string name)
     {
-        var q = new Queue<Transform>(); q.Enqueue(p);
-        while (q.Count > 0) { var c = q.Dequeue(); if (c.name == name) return c; foreach (Transform child in c) q.Enqueue(child); }
+        if (p == null) return null;
+
+        var q = new Queue<Transform>();
+        q.Enqueue(p);
+
+        while (q.Count > 0)
+        {
+            var c = q.Dequeue();
+            if (c.name == name) return c;
+
+            int childCount = c.childCount;
+            for (int i = 0; i < childCount; i++)
+            {
+                q.Enqueue(c.GetChild(i));
+            }
+        }
         return null;
     }
 
@@ -325,5 +457,41 @@ public static class Util
         };
         return Expression.Lambda<Func<object, TR>>(Expression.Convert(body, typeof(TR)), param).Compile();
     }
-    #endregion        
+    #endregion
+
+    #region MODULE G: Rank Display Helpers
+    /// <summary>
+    /// Returns the locale-appropriate ordinal rank suffix for <paramref name="rank"/>.
+    /// <list type="bullet">
+    ///   <item>English: 1st / 2nd / 3rd / Nth</item>
+    ///   <item>CJK (ZH/JA/KO): 位</item>
+    ///   <item>Thai, Arabic, and most other scripts: empty string (no grammatical suffix)</item>
+    /// </list>
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static string GetRankSuffix(int rank)
+    {
+        string lang = ConfigManager.Translation.Code.Value;
+        if (string.IsNullOrWhiteSpace(lang)) lang = GetXuatLanguage();
+
+        return lang switch
+        {
+            "zh" or "ja" or "ko" => "位",
+
+            "en" => (rank % 100) switch
+            {
+                11 or 12 or 13 => "th",
+                _ => (rank % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" }
+            },
+
+            "fr" => rank == 1 ? "er" : "e",
+            "de" or "ru" or "uk" or "bg" or "pl" => ".",
+            "es" or "pt" => "º",
+            "it"         => "°",
+            "nl"         => "e",
+
+            _ => string.Empty
+        };
+    }
+    #endregion
 }

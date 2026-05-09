@@ -24,12 +24,19 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<Compile Include="Patches\GameplayQoLPatch.cs" />
+		<Compile Include="Patches\ShopSearchPatch.cs" />
+		<Compile Include="Patches\SpriteAtlasPatch.cs" />
+		<Compile Include="Patches\StorySystemPatch.cs" />
+		<Compile Include="Patches\SubtitleSystemPatch.cs" />
+		<Compile Include="Patches\SugoiExitPatch.cs" />
 		<Compile Include="Patches\TextRegistryPatch.cs" />
 		<Compile Include="Patches\NumberComponentPatch.cs" />
 		<Compile Include="Patches\TranslationCorePatch.cs" />
+		<Compile Include="Patches\UIBubblePatch.cs" />
 		<Compile Include="Patches\UIComponentPatch.cs" />
 		<Compile Include="Patches\UILayoutPatch.cs" />
-		<Compile Include="Patches\WindowCorePatch.cs" />
+		<Compile Include="Patches\WindowSystemPatch.cs" />
 		<Compile Include="Patches\EngineBridgePatch.cs" />
 		<Compile Include="Patches\TextSafetyPatch.cs" />
 	</ItemGroup>

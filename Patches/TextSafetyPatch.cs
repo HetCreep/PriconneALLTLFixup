@@ -1,5 +1,7 @@
 ﻿using HarmonyLib;
 using System.Reflection;
+using UnityEngine;
+using System;
 
 namespace PriconneALLTLFixup.Patches;
 
@@ -16,9 +18,17 @@ public static class TextSafetyPatch
     [HarmonyWrapSafe]
     public static bool Prefix(object ui)
     {
+        if (!ConfigManager.Core.UIStabilityGuard.Value) return true;
+
         if (ui is not UnityEngine.Component component) return false;
 
-        if (!Util.IsSafe(component)) return false;
+        if (!component.IsSafe() || !component.IsTextElement())
+        {
+            if (FLog.IsDeveloperContext)
+                FLog.Debug($"[Safety] Blocked invalid ResizeUI attempt on: {ui?.GetType().Name ?? "Null"}");
+
+            return false;
+        }
 
         return true;
     }

@@ -1,144 +1,144 @@
-﻿using HarmonyLib;
+using HarmonyLib;
+using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Reflection;
 
 namespace PriconneALLTLFixup;
 
 public class HarmonyPatchController
 {
-    #region 1. Fields & Performance Monitoring
+    #region 1. Fields
     private readonly Harmony _harmony;
     private readonly string _namespaceFilter;
-
-    private static readonly FieldInfo _priorityField = AccessTools.Field(typeof(HarmonyPriority), "priority");
+    private readonly Dictionary<string, long> _patchProfiling = new();
 
     private readonly List<Type> _criticalRegistry = new();
     private readonly List<Type> _featureRegistry = new();
 
-    private readonly Dictionary<string, long> _patchProfiling = new();
-
     public IReadOnlyDictionary<string, long> PatchProfiling => _patchProfiling;
-
-    public Harmony Instance => _harmony;
-
     public int ActivePatchCount => _criticalRegistry.Count + _featureRegistry.Count;
     #endregion
 
-    #region 2. Professional Constructor
     public HarmonyPatchController(string harmonyId, string namespacePrefix)
     {
-        if (string.IsNullOrEmpty(harmonyId)) throw new ArgumentNullException(nameof(harmonyId));
-
         _harmony = new Harmony(harmonyId);
         _namespaceFilter = namespacePrefix;
-
         InitializeRegistry();
     }
-    #endregion
 
-    #region 3. Public Orchestration API
+    #region 2. API
+    public void Activate(List<Type> critical, List<Type> features)
+    {
+        _criticalRegistry.Clear();
+        _featureRegistry.Clear();
+        _criticalRegistry.AddRange(critical);
+        _featureRegistry.AddRange(features);
+
+        if (FLog.IsDeveloperContext) ApplyAllSynchronous();
+        else ApplySmartPatching();
+    }
+
     public void ApplySmartPatching()
     {
-        FLog.Info($"[Harmony] Initializing smart sequence: {_criticalRegistry.Count} Critical, {_featureRegistry.Count} Features.");
-
         foreach (var patch in _criticalRegistry) ApplySinglePatch(patch);
-
         if (_featureRegistry.Count > 0)
-        {
             CoroutineStarter.Run(ProcessAsyncBatch(3, _featureRegistry));
-        }
     }
 
     public void ApplyAllSynchronous()
     {
-        FLog.Info($"[Harmony] Full sync deployment for {ActivePatchCount} patches.");
         foreach (var patch in _criticalRegistry) ApplySinglePatch(patch);
         foreach (var patch in _featureRegistry) ApplySinglePatch(patch);
     }
 
-    public void Patch(Type type) => ApplySinglePatch(type);
-
     public void UnpatchAll()
     {
-        try
-        {
-            _harmony.UnpatchSelf();
-            _patchProfiling.Clear();
-            FLog.Info("[Harmony] Global teardown complete. All patches removed.");
-        }
-        catch (Exception ex)
-        {
-            FLog.Error($"[Harmony] Teardown failed: {ex.Message}");
-        }
+        try { _harmony.UnpatchSelf(); _patchProfiling.Clear(); }
+        catch (Exception ex) { FLog.Error($"[Harmony] Unpatch failed: {ex.Message}"); }
     }
 
+    /// <summary>Apply (or re-apply) a single patch class on demand.</summary>
+    public void Patch(Type type) => ApplySinglePatch(type);
+
+    /// <summary>Remove all patches contributed by a single patch class.</summary>
     public void Unpatch(Type type)
     {
         if (type == null) return;
         try
         {
-            var methods = _harmony.GetPatchedMethods().ToList();
-            foreach (var method in methods)
+            foreach (var original in PatchedMethods())
             {
-                var info = Harmony.GetPatchInfo(method);
+                var info = Harmony.GetPatchInfo(original);
                 if (info == null) continue;
 
-                bool isOwner = info.Prefixes.Any(p => p.PatchMethod.DeclaringType == type) ||
-                               info.Postfixes.Any(p => p.PatchMethod.DeclaringType == type) ||
-                               info.Transpilers.Any(p => p.PatchMethod.DeclaringType == type);
+                bool owned = info.Prefixes.Any(p  => p.owner == _harmony.Id && p.PatchMethod.DeclaringType == type)
+                          || info.Postfixes.Any(p => p.owner == _harmony.Id && p.PatchMethod.DeclaringType == type)
+                          || info.Transpilers.Any(p => p.owner == _harmony.Id && p.PatchMethod.DeclaringType == type);
 
-                if (isOwner) _harmony.Unpatch(method, HarmonyPatchType.All, _harmony.Id);
+                if (owned)
+                    _harmony.Unpatch(original, HarmonyPatchType.All, _harmony.Id);
             }
             _patchProfiling.Remove(type.Name);
-            FLog.Debug($"Unpatched module: {type.Name}");
+            FLog.Debug($"[Harmony] Unpatched: {type.Name}");
         }
-        catch (Exception ex)
-        {
-            FLog.Error($"[Harmony] Partial unpatch failed for {type.Name}: {ex.Message}");
-        }
+        catch (Exception ex) { FLog.Error($"[Harmony] Unpatch({type.Name}) failed: {ex.Message}"); }
+    }
+
+    private IEnumerable<MethodBase> PatchedMethods()
+    {
+        try { return Harmony.GetAllPatchedMethods(); }
+        catch { return Array.Empty<MethodBase>(); }
     }
     #endregion
 
-    #region 4. Internal Engine Logic
-    private void InitializeRegistry()
+    #region 3. Internal Logic (The Safe Engine)
+    private void InitializeRegistry()
     {
         try
         {
-            var allTypes = Assembly.GetExecutingAssembly().GetTypes();
-            var patchList = new List<(Type Type, int Priority)>();
+            // [Strict Isolation] สแกนเฉพาะมอดเราเท่านั้น ห้ามออกไปข้างนอก!
+            var myAssembly = Assembly.GetExecutingAssembly();
+            var allTypes = GetLoadableTypes(myAssembly);
 
             foreach (var type in allTypes)
             {
-                if (type.Namespace == null || !type.Namespace.StartsWith(_namespaceFilter)) continue;
-                if (type.IsAbstract || !type.GetCustomAttributes(typeof(HarmonyPatch), true).Any()) continue;
+                if (type == null || type.Namespace == null || !type.Namespace.StartsWith(_namespaceFilter)) continue;
+                if (type.IsAbstract || !type.IsDefined(typeof(HarmonyPatch), true)) continue;
 
+                // ตรวจสอบ Priority แบบ Manual เพื่อเลี่ยง AccessTools ที่ขี้บ่น
+                int priority = 400;
                 var prioAttr = type.GetCustomAttribute<HarmonyPriority>();
-                int priorityValue = 400;
-
-                if (prioAttr != null && _priorityField != null)
+                if (prioAttr != null)
                 {
-                    var val = _priorityField.GetValue(prioAttr);
-                    if (val is int p) priorityValue = p;
+                    // ใช้ Reflection ดึงค่า priority ออกมาตรงๆ
+                    var prop = typeof(HarmonyPriority).GetField("priority", Util.UniversalFlags);
+                    if (prop != null) priority = (int)prop.GetValue(prioAttr);
                 }
 
-                patchList.Add((type, priorityValue));
+                if (priority < 400) _criticalRegistry.Add(type);
+                else _featureRegistry.Add(type);
             }
-
-            var sortedList = patchList.OrderBy(x => x.Priority).ToList();
-
-            foreach (var item in sortedList)
-            {
-                if (item.Priority < 400) _criticalRegistry.Add(item.Type);
-                else _featureRegistry.Add(item.Type);
-            }
-
-            FLog.Debug($"[Scanner] Registry populated with {patchList.Count} modules.");
+            FLog.Info($"[Harmony] Registry built: {ActivePatchCount} modules found.");
         }
-        catch (Exception ex)
+        catch (Exception ex) { FLog.Error($"[Scanner] Fatal Error: {ex.Message}"); }
+    }
+
+    private IEnumerable<Type> GetLoadableTypes(Assembly assembly)
+    {
+        if (assembly == null) return Array.Empty<Type>();
+        try
         {
-            FLog.Error($"[Scanner] Failed to build patch registry: {ex.Message}");
+            return assembly.GetTypes();
         }
+        catch (ReflectionTypeLoadException e)
+        {
+            // คืนค่าเฉพาะตัวที่โหลดได้ (ข้ามตัวพังๆ ไปเงียบๆ)
+            return e.Types.Where(t => t != null && t.Namespace != null && t.Namespace.StartsWith(_namespaceFilter))!;
+        }
+        catch { return Array.Empty<Type>(); }
     }
 
     private void ApplySinglePatch(Type type)
@@ -147,29 +147,33 @@ public class HarmonyPatchController
         var timer = Stopwatch.StartNew();
         try
         {
-            var prepare = type.GetMethod("Prepare", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            // เช็ก Prepare()
+            var prepare = type.GetMethod("Prepare", Util.UniversalFlags);
             if (prepare != null)
             {
                 var shouldPatch = prepare.Invoke(null, new object[] { _harmony });
-                if (shouldPatch is bool result && !result)
-                {
-                    FLog.Debug($"[Harmony] Skipped {type.Name} per Prepare() logic.");
-                    return;
-                }
+                if (shouldPatch is bool result && !result) return;
             }
 
-            _harmony.PatchAll(type);
+            // [Surgical Patching] ใช้ ClassProcessor เพื่อห้าม Harmony ไปสแกน Assembly อื่นเพิ่ม
+            var processor = _harmony.CreateClassProcessor(type);
+            processor.Patch();
+
             timer.Stop();
-
             _patchProfiling[type.Name] = timer.ElapsedMilliseconds;
-
-            var cat = type.GetCustomAttribute<HarmonyPatchCategory>()?.Category ?? "Misc";
-            FLog.Debug($"[{cat}] Applied: {type.Name} in {timer.ElapsedMilliseconds}ms");
+            if (FLog.IsDeveloperContext) FLog.Debug($"[Harmony] Applied: {type.Name}");
         }
         catch (Exception ex)
         {
-            timer.Stop();
-            FLog.Error($"[Harmony] Critical failure in {type.Name}: {ex.Message}");
+            // Distinguish "method not found in this game build" from real failures
+            bool isNullMethod = ex.Message.Contains("in method null")
+                             || ex.Message.Contains("Patching exception in method null")
+                             || (ex.InnerException?.Message.Contains("null") == true && ex.Message.Contains("Patching"));
+
+            if (isNullMethod)
+                FLog.Debug($"[Harmony] {type.Name}: optional method absent in this build — skipped.");
+            else
+                FLog.Error($"[Harmony] Failure in {type.Name}: {ex.Message}");
         }
     }
 
@@ -182,16 +186,6 @@ public class HarmonyPatchController
             processed++;
             if (processed % size == 0) yield return null;
         }
-        FLog.Info($"[Harmony] Background deployment finished ({processed} modules).");
     }
     #endregion
 }
-
-#region 5. Formal Attributes
-[AttributeUsage(AttributeTargets.Class, Inherited = false)]
-public sealed class HarmonyPatchCategory : Attribute
-{
-    public string Category { get; }
-    public HarmonyPatchCategory(string category) => Category = category;
-}
-#endregion

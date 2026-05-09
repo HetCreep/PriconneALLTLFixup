@@ -1,4 +1,6 @@
-﻿using System.Globalization;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using UnityEngine;
@@ -12,7 +14,7 @@ public class AdaptiveTextLayoutProcessor
 
     private static readonly Dictionary<int, float> _advanceCache = new(2048);
     private static readonly Dictionary<int, string> _layoutCache = new(512);
-    private static readonly List<int> _lruHistory = new(512);
+    private static readonly Queue<int> _lruHistory = new(512);
     #endregion
 
     #region 2. Readonly Internal Fields
@@ -52,8 +54,8 @@ public class AdaptiveTextLayoutProcessor
 
         foreach (char c in text)
         {
-            if (c == '[') { skippingTag = true; continue; }
-            if (c == ']' && skippingTag) { skippingTag = false; continue; }
+            if (c == '<' || c == '[') { skippingTag = true; continue; }
+            if ((c == '>' || c == ']') && skippingTag) { skippingTag = false; continue; }
             if (skippingTag) continue;
 
             total += MeasureGlyph(c) * scale;
@@ -66,7 +68,8 @@ public class AdaptiveTextLayoutProcessor
         string raw = _component.text;
         if (string.IsNullOrEmpty(raw) || maxWidth <= 0) return;
 
-        int layoutHash = raw.GetHashCode() ^ maxWidth.GetHashCode();
+        int layoutHash = HashCode.Combine(raw, maxWidth);
+
         lock (_syncRoot)
         {
             if (_layoutCache.TryGetValue(layoutHash, out var cached) && cached is not null)
@@ -76,12 +79,10 @@ public class AdaptiveTextLayoutProcessor
             }
         }
 
-        FLog.Debug($"Processing layout for: {raw.Length} chars");
-
         float scale = CalculateEffectiveScale();
         float currentX = 0f;
-        int lastBreakableIndex = -1;
-        float widthAtLastBreak = 0f;
+        int lastSafeBreakIndex = -1;
+        float widthAtSafeBreak = 0f;
         bool inTag = false;
 
         _buffer.Clear();
@@ -91,34 +92,45 @@ public class AdaptiveTextLayoutProcessor
         {
             char c = span[i];
 
-            if (c == '[') { inTag = true; _buffer.Append(c); continue; }
-            if (c == ']' && inTag) { inTag = false; _buffer.Append(c); continue; }
+            if (c == '<' || c == '[') { inTag = true; _buffer.Append(c); continue; }
+            if ((c == '>' || c == ']') && inTag) { inTag = false; _buffer.Append(c); continue; }
             if (inTag) { _buffer.Append(c); continue; }
 
-            if (c == '\n') { currentX = 0; lastBreakableIndex = -1; _buffer.Append(c); continue; }
+            if (c == '\n') { currentX = 0; lastSafeBreakIndex = -1; _buffer.Append(c); continue; }
 
             if (IsNonSpacingGlyph(c)) { _buffer.Append(c); continue; }
 
             float charW = MeasureGlyph(c) * scale;
 
-            if (char.IsWhiteSpace(c))
+            if (char.IsWhiteSpace(c) || (IsSpaceLessScript(c) && !IsProhibitedLineStart(c)))
             {
-                lastBreakableIndex = _buffer.Length;
-                widthAtLastBreak = currentX;
+                lastSafeBreakIndex = _buffer.Length;
+                widthAtSafeBreak = currentX;
             }
 
             if (currentX + charW > maxWidth)
             {
-                if (lastBreakableIndex != -1)
+                if (lastSafeBreakIndex != -1)
                 {
-                    _buffer[lastBreakableIndex] = '\n';
-                    currentX -= widthAtLastBreak;
-                    lastBreakableIndex = -1;
+                    if (char.IsWhiteSpace(_buffer[lastSafeBreakIndex]))
+                    {
+                        _buffer[lastSafeBreakIndex] = '\n';
+                    }
+                    else
+                    {
+                        _buffer.Insert(lastSafeBreakIndex, '\n');
+                    }
+
+                    currentX -= widthAtSafeBreak;
+                    lastSafeBreakIndex = -1;
                 }
                 else
                 {
-                    _buffer.Append('\n');
-                    currentX = 0;
+                    if (_buffer.Length > 0 && _buffer[_buffer.Length - 1] != '\n')
+                    {
+                        _buffer.Append('\n');
+                        currentX = 0;
+                    }
                 }
             }
 
@@ -133,6 +145,20 @@ public class AdaptiveTextLayoutProcessor
     #endregion
 
     #region 6. Internal Optimization Helpers
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsSpaceLessScript(char c)
+    {
+        return (c >= 0x0E00 && c <= 0x0E7F) ||
+               (c >= 0x3000 && c <= 0x9FFF) ||
+               (c >= 0xAC00 && c <= 0xD7AF);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsProhibitedLineStart(char c)
+    {
+        return ".,!?:;)]}。）」』】》”’ๆฯ".IndexOf(c) >= 0;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool IsNonSpacingGlyph(char c)
@@ -182,12 +208,11 @@ public class AdaptiveTextLayoutProcessor
                     int cleanCount = Math.Min(50, _lruHistory.Count);
                     for (int i = 0; i < cleanCount; i++)
                     {
-                        _layoutCache.Remove(_lruHistory[0]);
-                        _lruHistory.RemoveAt(0);
+                        if (_lruHistory.TryDequeue(out int oldest))
+                            _layoutCache.Remove(oldest);
                     }
-                    FLog.Debug($"[Memory] Layout cache purged {cleanCount} items.");
                 }
-                _lruHistory.Add(key);
+                _lruHistory.Enqueue(key);
             }
             _layoutCache[key] = val;
         }
@@ -200,7 +225,6 @@ public class AdaptiveTextLayoutProcessor
             _advanceCache.Clear();
             _layoutCache.Clear();
             _lruHistory.Clear();
-            FLog.Debug("[Memory] Layout Processor caches purged.");
         }
     }
     #endregion

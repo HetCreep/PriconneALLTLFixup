@@ -1,4 +1,4 @@
-﻿using BepInEx.Unity.IL2CPP.Utils.Collections;
+using BepInEx.Unity.IL2CPP.Utils.Collections;
 using Il2CppInterop.Runtime.Injection;
 using System.Collections;
 using System.Runtime.CompilerServices;
@@ -28,10 +28,13 @@ public class CoroutineStarter : MonoBehaviour
     #endregion
 
     #region 3. Core Engine Initialization
+    private static bool _isQuitting = false;
+
     public static void SetupMainThread()
     {
         if (_mainThreadId != 0) return;
         _mainThreadId = Environment.CurrentManagedThreadId;
+
         FLog.Debug($"Core Thread ID defined: {_mainThreadId}");
     }
 
@@ -39,7 +42,7 @@ public class CoroutineStarter : MonoBehaviour
     {
         get
         {
-            if (_instance != null) return _instance;
+            if (_instance != null || _isQuitting) return _instance!;
             lock (_syncRoot)
             {
                 if (_instance != null) return _instance;
@@ -59,25 +62,29 @@ public class CoroutineStarter : MonoBehaviour
             }
         }
     }
-
-    public CoroutineStarter(IntPtr ptr) : base(ptr) { }
     #endregion
 
     #region 4. Logic Flow: Unity Lifecycle
+    public void OnApplicationQuit()
+    {
+        _isQuitting = true;
+        FLog.Info("[System] Coroutine Engine shutting down (Application Quit).");
+    }
+
     private void Update()
     {
-        if (_pendingQueue.Count > 0)
+        lock (_pendingQueue)
         {
-            lock (_pendingQueue)
+            if (_pendingQueue.Count > 0)
             {
                 _executionBatch.Clear();
                 while (_pendingQueue.Count > 0)
                     _executionBatch.Add(_pendingQueue.Dequeue());
             }
-
-            for (int i = 0; i < _executionBatch.Count; i++)
-                InvokeSafe(_executionBatch[i]);
         }
+
+        for (int i = 0; i < _executionBatch.Count; i++)
+            InvokeSafe(_executionBatch[i]);
 
         OnFrameUpdate?.Invoke();
     }
@@ -88,6 +95,7 @@ public class CoroutineStarter : MonoBehaviour
 
     public void OnDestroy()
     {
+        _isQuitting = true;
         if (_instance == this) _instance = null;
         _waitCache.Clear();
         FLog.Debug("CoroutineStarter engine stopped and memory released.");
@@ -144,18 +152,22 @@ public class CoroutineStarter : MonoBehaviour
     private static IEnumerator DelayedRoutine(float seconds, Action action)
     {
         float roundedSeconds = (float)Math.Round(seconds, 2);
+        WaitForSeconds wait;
 
-        if (!_waitCache.TryGetValue(roundedSeconds, out var wait))
+        lock (_syncRoot)
         {
-            wait = new WaitForSeconds(roundedSeconds);
-
-            if (_waitCache.Count > 100)
+            if (!_waitCache.TryGetValue(roundedSeconds, out wait!))
             {
-                _waitCache.Clear();
-                FLog.Debug("[Coroutine] Wait cache exceeded limit and was cleared.");
-            }
+                wait = new WaitForSeconds(roundedSeconds);
 
-            _waitCache[roundedSeconds] = wait;
+                if (_waitCache.Count > 100)
+                {
+                    _waitCache.Clear();
+                    FLog.Debug("[Coroutine] Wait cache exceeded limit and was cleared.");
+                }
+
+                _waitCache[roundedSeconds] = wait;
+            }
         }
 
         yield return wait;

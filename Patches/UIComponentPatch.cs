@@ -1,8 +1,13 @@
-﻿using Elements;
+using Elements;
 using FLATOUT.Main;
 using HarmonyLib;
 using Il2CppInterop.Runtime;
+using System;
 using System.Collections;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -12,22 +17,24 @@ namespace PriconneALLTLFixup.Patches;
 [HarmonyPatch]
 public static class UIComponentPatch
 {
-    #region 1. Internal State & Failsafe Flags
+    #region 1. Internal State
     private static bool _initialized;
     private static bool _fontSystemReady;
-    private static bool _resizeInProgress;
-    private static readonly object _uiLock = new object();
+    private static bool _fontRulesReady;
+    private static bool _layoutRulesReady;
+    private static volatile bool _resizeInProgress;
+    private static readonly object _uiLock = new();
 
-    private static Font _baseFont;
-    private static readonly Dictionary<string, Font> _fontLibrary = new Dictionary<string, Font>(StringComparer.OrdinalIgnoreCase);
-    private static readonly List<KeyValuePair<Regex, Font>> _fontRules = new List<KeyValuePair<Regex, Font>>();
-    private static readonly List<(Regex regex, float width, UILabel.Overflow method)> _layoutRules = new List<(Regex regex, float width, UILabel.Overflow method)>();
+    private static Font _baseFont = null!;
+    private static readonly Dictionary<string, Font> _fontLibrary = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly List<(Regex regex, Font font)> _fontRules = new();
+    private static readonly List<(Regex regex, float width, UILabel.Overflow method)> _layoutRules = new();
 
-    private static readonly Dictionary<string, Font> _matchedFontCache = new Dictionary<string, Font>(1024);
-    private static readonly Dictionary<string, (float width, UILabel.Overflow method)?> _matchedLayoutCache = new Dictionary<string, (float width, UILabel.Overflow method)?>(1024);
+    private static readonly Dictionary<string, Font> _matchedFontCache = new(2048);
+    private static readonly Dictionary<string, (float width, UILabel.Overflow method)?> _matchedLayoutCache = new(2048);
     #endregion
 
-    #region 2. System Loader & Integrity Check
+    #region 2. System Loader (Traceable & Robust)
     private static void Initialize()
     {
         if (_initialized) return;
@@ -36,33 +43,78 @@ public static class UIComponentPatch
             if (_initialized) return;
             try
             {
-                string lang = Util.GetXuatLanguage();
-                string root = Path.Combine(BepInEx.Paths.BepInExRootPath, "Translation", lang);
-                string fontDir = Path.Combine(root, "Font");
-                string otherDir = Path.Combine(root, "Other");
+                string xuatLang = Util.GetXuatLanguage();
+                FLog.Info($"[Bridge] XUAT Connectivity Check: Detected Language = '{xuatLang}'");
 
-                _baseFont = LoadFontBundle(Path.Combine(fontDir, "font_base.unity3d"));
-                _fontSystemReady = (_baseFont != null);
+                string finalLang = ConfigManager.Translation.Code.Value;
+                if (string.IsNullOrWhiteSpace(finalLang)) finalLang = xuatLang;
+                FLog.Info($"[Visual] Master Framework initiating patch for: [{finalLang.ToUpper()}]");
 
-                if (!_fontSystemReady)
-                    FLog.Warn("[Visual] font_base.unity3d missing. Font redirection will be disabled.");
+                string root = Path.Combine(BepInEx.Paths.BepInExRootPath, "Translation", finalLang);
 
-                if (_fontSystemReady && Directory.Exists(fontDir))
+                string fontPath = Path.Combine(root, "Font", "font_base.unity3d");
+
+                // Fallback: scan all language subfolders if lang is empty or font not found there
+                if (!File.Exists(fontPath))
                 {
-                    foreach (var file in Directory.GetFiles(fontDir, "*.unity3d"))
+                    string translationRoot = Path.Combine(BepInEx.Paths.BepInExRootPath, "Translation");
+                    if (Directory.Exists(translationRoot))
                     {
-                        string name = Path.GetFileNameWithoutExtension(file);
-                        if (name == "font_base") continue;
-                        Font f = LoadFontBundle(file);
-                        if (f != null) _fontLibrary[name] = f;
+                        foreach (string langDir in Directory.GetDirectories(translationRoot))
+                        {
+                            string candidate = Path.Combine(langDir, "Font", "font_base.unity3d");
+                            if (File.Exists(candidate))
+                            {
+                                fontPath = candidate;
+                                root = langDir; // update root so rules/supplementary fonts use correct path
+                                FLog.Debug($"[Visual] Font fallback: found in '{Path.GetFileName(langDir)}' subfolder.");
+                                break;
+                            }
+                        }
                     }
                 }
 
-                ParseFontConfig(Path.Combine(otherDir, "_01.font.txt"));
-                ParseLayoutConfig(Path.Combine(otherDir, "_02.resize.txt"));
+                if (File.Exists(fontPath))
+                {
+                    _baseFont = LoadFontBundle(fontPath)!;
+                    _fontSystemReady = (_baseFont != null);
+                }
+                else
+                {
+                    FLog.Warn("[Visual] Critical: 'font_base.unity3d' missing. Font patching is DISABLED.");
+                    _fontSystemReady = false;
+                }
+
+                if (_fontSystemReady)
+                {
+                    LoadSupplementaryFonts(Path.Combine(root, "Font"));
+
+                    string fontRulePath = Path.Combine(root, "Other", "_01.font.txt");
+                    if (File.Exists(fontRulePath))
+                    {
+                        ParseFontConfig(fontRulePath);
+                        _fontRulesReady = _fontRules.Count > 0;
+                    }
+                    else
+                    {
+                        FLog.Info("[Visual] Info: '_01.font.txt' missing. Only 'font_base' will be applied globally.");
+                        _fontRulesReady = false;
+                    }
+                }
+
+                string layoutRulePath = Path.Combine(root, "Other", "_02.resize.txt");
+                if (File.Exists(layoutRulePath))
+                {
+                    ParseLayoutConfig(layoutRulePath);
+                    _layoutRulesReady = _layoutRules.Count > 0;
+                }
+                else
+                {
+                    FLog.Info("[Visual] Info: '_02.resize.txt' missing. Using default game layout.");
+                    _layoutRulesReady = false;
+                }
 
                 _initialized = true;
-                FLog.Info($"[Visual] UI Engine Ready for '{lang}'. Rules: {_layoutRules.Count} resizer, {_fontRules.Count} font.");
             }
             catch (Exception ex) { FLog.Error("[Visual] Engine init failed", ex); }
         }
@@ -70,41 +122,35 @@ public static class UIComponentPatch
 
     private static void ParseFontConfig(string path)
     {
-        if (!File.Exists(path)) return;
         foreach (var line in File.ReadLines(path))
         {
             if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#")) continue;
-            var parts = line.Split(new[] { '=' }, 2);
+            var parts = line.Split('=', 2);
             if (parts.Length != 2) continue;
 
-            string pattern = parts[0].Trim();
             string fontKey = parts[1].Trim();
+            Font target = null;
+            if (_fontLibrary.TryGetValue(fontKey, out Font libF)) target = libF;
+            else if (fontKey == "font_base") target = _baseFont;
 
-            Font targetFont = null;
-            if (_fontLibrary.TryGetValue(fontKey, out Font libFont)) targetFont = libFont;
-            else if (fontKey == "font_base") targetFont = _baseFont;
-
-            if (targetFont != null)
-                _fontRules.Add(new KeyValuePair<Regex, Font>(ConvertToRegex(pattern), targetFont));
+            if (target != null) _fontRules.Add((ConvertToRegex(parts[0].Trim()), target));
         }
     }
 
     private static void ParseLayoutConfig(string path)
     {
-        if (!File.Exists(path)) return;
         foreach (var line in File.ReadLines(path))
         {
             if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#")) continue;
-            var parts = line.Split(new[] { '=' }, 2);
+            var parts = line.Split('=', 2);
             if (parts.Length != 2) continue;
 
             var vals = parts[1].Split('|');
-            if (vals.Length != 2 || !float.TryParse(vals[0].Trim(), out float w)) continue;
-
-            UILabel.Overflow method = vals[1].Trim().Contains("ResizeHeight", StringComparison.OrdinalIgnoreCase)
-                ? UILabel.Overflow.ResizeHeight : UILabel.Overflow.ShrinkContent;
-
-            _layoutRules.Add((ConvertToRegex(parts[0].Trim()), w, method));
+            if (vals.Length == 2 && float.TryParse(vals[0].Trim(), out float w))
+            {
+                var method = vals[1].Contains("ResizeHeight") ? UILabel.Overflow.ResizeHeight : UILabel.Overflow.ShrinkContent;
+                _layoutRules.Add((ConvertToRegex(parts[0].Trim()), w, method));
+            }
         }
     }
 
@@ -116,7 +162,6 @@ public static class UIComponentPatch
 
     private static Font LoadFontBundle(string path)
     {
-        if (!File.Exists(path)) return null;
         try
         {
             AssetBundle bundle = AssetBundle.LoadFromFile(path);
@@ -129,34 +174,29 @@ public static class UIComponentPatch
         catch { return null; }
     }
 
-    private static int GetAdaptiveSize(int originalSize)
+    private static void LoadSupplementaryFonts(string fontDir)
     {
-        if (originalSize != 24) return originalSize;
-
-        string lang = Util.GetXuatLanguage();
-
-        return lang switch
+        if (!Directory.Exists(fontDir)) return;
+        foreach (var file in Directory.GetFiles(fontDir, "*.unity3d"))
         {
-            "th" or "vi" or "hi" => 19,
-
-            "en" or "es" or "fr" or "de" or "it" => 20,
-
-            _ => 21
-        };
+            string name = Path.GetFileNameWithoutExtension(file);
+            if (name == "font_base") continue;
+            Font f = LoadFontBundle(file);
+            if (f != null) _fontLibrary[name] = f;
+        }
     }
     #endregion
 
-    #region 3. Module A: Universal UI Handler
+    #region 3. Module A: Universal UI Handler (NGUI)
     [HarmonyPatch(typeof(CustomUILabel), nameof(CustomUILabel.Awake))]
     [HarmonyPrefix]
     public static void PrefixNGUIAwake(CustomUILabel __instance)
     {
-        if (!ConfigManager.Visual.UIFont.Value && !ConfigManager.Visual.UIUniversal.Value) return;
         if (!_initialized) Initialize();
         if (__instance.IsSafe()) ApplyNGUIStyle(__instance);
     }
 
-    [HarmonyPatch(typeof(UILabel), nameof(UILabel.ProcessText))]
+    [HarmonyPatch(typeof(UILabel), nameof(UILabel.ProcessText), new[] { typeof(bool), typeof(bool) })]
     [HarmonyPostfix]
     public static void PostfixNGUIProcess(UILabel __instance)
     {
@@ -170,18 +210,19 @@ public static class UIComponentPatch
 
         if (ConfigManager.Visual.UIFont.Value && _fontSystemReady)
         {
-            Font targetFont = GetMatchedFont(path) ?? _baseFont;
-            if (targetFont != null && label.trueTypeFont != targetFont)
-                label.trueTypeFont = targetFont;
+            Font targetFont = _fontRulesReady ? GetMatchedFont(path) : null;
+            targetFont ??= _baseFont;
+            if (label.trueTypeFont != targetFont) label.trueTypeFont = targetFont;
         }
 
-        if (ConfigManager.Visual.UIUniversal.Value)
+        if (ConfigManager.Visual.UIUniversal.Value && _layoutRulesReady)
         {
             var layout = GetMatchedLayout(path);
             if (layout.HasValue)
             {
                 label.lineWidth = (int)layout.Value.width;
                 label.overflowMethod = layout.Value.method;
+
                 if (layout.Value.method == UILabel.Overflow.ResizeHeight)
                 {
                     label.multiLine = true;
@@ -192,7 +233,7 @@ public static class UIComponentPatch
     }
     #endregion
 
-    #region 4. Module B: Silent Integrity Fixes (Always On)
+    #region 4. Module B: Header & Integrity (Always On)
     [HarmonyPatch(typeof(PartsHeaderBackButton), "SetTitleText")]
     [HarmonyPrefix]
     public static bool PrefixHeaderTitle(PartsHeaderBackButton __instance, string _setTitleText)
@@ -211,48 +252,85 @@ public static class UIComponentPatch
         return false;
     }
 
+    [HarmonyPatch(typeof(PartsHeaderBackButton), "SetSubTitleText")]
+    [HarmonyPostfix]
+    [HarmonyWrapSafe]
+    public static void PostfixHeaderSubTitle(PartsHeaderBackButton __instance, string _setSubTitleText)
+    {
+        if (!__instance.IsSafe() || __instance.subTitleLabel == null
+         || string.IsNullOrEmpty(_setSubTitleText)) return;
+
+        // Immediate resize for already-translated (non-Japanese) text
+        if (!ContainsJapanese(__instance.subTitleLabel.text))
+        {
+            __instance.subTitleLabel.ProcessText();
+            int backPad = (__instance.backButton == null) ? 50 : 0;
+            float w = __instance.subTitleLabel.mCalculatedSize.x + 20f + backPad;
+            __instance.underLine.width = (int)Math.Round(w);
+
+            HeaderController header = SingletonMonoBehaviour<HeaderController>.Instance;
+            if (header.IsSafe())
+                header.campaignIcons.SetIconPosition(header.viewManager.CurrentViewId, w);
+        }
+
+        // Deferred resize to catch XUAT translation finishing after this frame
+        CoroutineStarter.Run(AdjustSubTitleOnFly(__instance, _setSubTitleText));
+    }
+
     private static IEnumerator AdjustTitleOnFly(PartsHeaderBackButton instance, string text)
     {
-        float timeout = Time.time + 3f;
-        while (Time.time < timeout && instance.titleLabel2nd.text == text) yield return null;
+        yield return new Util.WaitUntilOrTimeoutInstruction(3f, () => instance.titleLabel2nd.text != text);
         if (instance.IsSafe())
         {
             instance.titleLabel2nd.ProcessText();
             float finalWidth = instance.titleLabel2nd.mCalculatedSize.x + 40f;
             instance.underLine.width = (int)Math.Round(finalWidth);
+
             HeaderController header = SingletonMonoBehaviour<HeaderController>.Instance;
-            if (header.IsSafe()) header.campaignIcons.SetIconPosition(header.viewManager.CurrentViewId, finalWidth);
+            if (header.IsSafe())
+                header.campaignIcons.SetIconPosition(header.viewManager.CurrentViewId, finalWidth);
+        }
+    }
+
+    private static IEnumerator AdjustSubTitleOnFly(PartsHeaderBackButton instance, string originalText)
+    {
+        int backPad = (instance.backButton == null) ? 50 : 0;
+        yield return new Util.WaitUntilOrTimeoutInstruction(3f,
+            () => !instance.IsSafe() || instance.subTitleLabel.text != originalText);
+        if (instance.IsSafe())
+        {
+            instance.subTitleLabel.ProcessText();
+            float finalWidth = instance.subTitleLabel.mCalculatedSize.x + 20f + backPad;
+            instance.underLine.width = (int)Math.Round(finalWidth);
+
+            HeaderController header = SingletonMonoBehaviour<HeaderController>.Instance;
+            if (header.IsSafe())
+                header.campaignIcons.SetIconPosition(header.viewManager.CurrentViewId, finalWidth);
         }
     }
     #endregion
 
-    #region 5. Module C: Legacy TextMesh & Fallback
+    #region 5. Module C: Legacy & Flash Support
     [HarmonyPatch(typeof(TextMesh), nameof(TextMesh.text), MethodType.Setter)]
     [HarmonyPostfix]
-    public static void PostfixTextMesh(TextMesh __instance, string value)
+    public static void PostfixTextMesh(TextMesh __instance)
     {
-        if (_resizeInProgress || !__instance.IsSafe() || string.IsNullOrEmpty(value)) return;
-
-        bool doFont = ConfigManager.Visual.UIFont.Value;
-        bool doResize = ConfigManager.Visual.UIUniversal.Value;
-        if (!doFont && !doResize) return;
+        if (_resizeInProgress || !__instance.IsSafe() || !_initialized) return;
 
         try
         {
             _resizeInProgress = true;
-            if (doFont && _fontSystemReady && _baseFont != null) __instance.font = _baseFont;
 
-            if (doResize)
+            if (ConfigManager.Visual.UIFont.Value && _fontSystemReady)
+                __instance.font = _baseFont;
+
+            if (ConfigManager.Visual.UIUniversal.Value)
             {
-                if (__instance.fontSize == 24) __instance.fontSize = GetAdaptiveSize(24);
+                if (__instance.fontSize == 24)
+                    __instance.fontSize = GetAdaptiveSize(24);
 
-                string path = __instance.transform.GetHierarchyPath();
-                var cfg = GetMatchedLayout(path);
-
-                float targetWidth = cfg.HasValue ? cfg.Value.width : 1.7f;
-
-                TextSize textSize = new TextSize(__instance);
-                if (textSize.Width > targetWidth) textSize.FitToWidth(targetWidth);
+                TextSize sizeTool = new TextSize(__instance);
+                if (sizeTool.Width > 1.7f) sizeTool.FitToWidth(1.7f);
             }
         }
         finally { _resizeInProgress = false; }
@@ -262,34 +340,82 @@ public static class UIComponentPatch
     [HarmonyPostfix]
     public static void PostfixFlashSize(FlTextParameter __instance)
     {
-        if (__instance.IsSafe() && __instance._fontSize == 24)
+        if (ConfigManager.Visual.UIUniversal.Value && __instance.IsSafe() && __instance._fontSize == 24)
             __instance._fontSize = GetAdaptiveSize(24);
     }
+
+    private static int GetAdaptiveSize(int originalSize)
+    {
+        string lang = ConfigManager.Translation.Code.Value;
+        if (string.IsNullOrWhiteSpace(lang)) lang = Util.GetXuatLanguage();
+
+        // Derive scale from the Unicode script of the active translation language.
+        // This avoids maintaining a language-code whitelist and supports every locale.
+        return (int)(originalSize * GetScriptScaleRatio(lang));
+    }
+
+    /// <summary>
+    /// Returns a font-size scale ratio (0–1) based on the script family of the active
+    /// translation language, derived from its ISO 639-1 code.
+    /// <list type="bullet">
+    ///   <item>0.80 — Wide diacritic scripts: Thai, Khmer, Lao, Myanmar, Tibetan, Sinhala, Burmese</item>
+    ///   <item>0.85 — Bidirectional / complex scripts: Arabic, Hebrew, Syriac, Thaana</item>
+    ///   <item>0.88 — Latin-extended / space-heavy: English, French, German, Spanish, etc.</item>
+    ///   <item>0.93 — CJK / Indic / compact scripts: Chinese, Japanese, Korean, Hindi, Bengali</item>
+    ///   <item>0.96 — Default fallback for all other scripts</item>
+    /// </list>
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static float GetScriptScaleRatio(string isoCode) => isoCode switch
+    {
+        // Wide diacritic scripts (vertical stacking glyphs take significant vertical space)
+        "th" or "km" or "lo" or "my" or "bo" or "si" => 0.80f,
+
+        // Bidirectional / complex right-to-left scripts
+        "ar" or "he" or "fa" or "ur" or "ps" or "syr" or "dv" => 0.85f,
+
+        // Latin and Cyrillic with long words / wide character metrics
+        "en" or "fr" or "de" or "es" or "pt" or "it" or "nl" or "pl"
+        or "cs" or "ru" or "uk" or "bg" or "ro" or "el" or "hu" or "sv"
+        or "no" or "da" or "fi" or "sk" or "hr" or "sr" or "sl" or "lt"
+        or "lv" or "et" or "ca" or "eu" or "gl" or "tr" or "az" or "kk"
+        or "uz" or "tk" or "ky" or "mn" or "id" or "ms" or "tl" or "sw"
+        or "sq" or "mk" or "bs" or "is" or "ga" or "cy" or "mt" or "lb" => 0.88f,
+
+        // Compact CJK and Indic scripts (dense character packing)
+        "zh" or "ja" or "ko" or "hi" or "bn" or "mr" or "gu" or "ta"
+        or "te" or "kn" or "ml" or "pa" or "ne" or "si" or "as" or "or"
+        or "vi" or "ka" or "am" or "ti" => 0.93f,
+
+        // Default: safe conservative scale for any unrecognised locale
+        _ => 0.96f
+    };
     #endregion
 
-    #region 6. Internal Cache Engine
+    #region 6. Helper Methods & Cache
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ContainsJapanese(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return false;
+        foreach (char c in text)
+            if ((c >= '\u3040' && c <= '\u30FF') || // Hiragana + Katakana
+                (c >= '\u4E00' && c <= '\u9FFF'))   // CJK Unified Ideographs (Kanji)
+                return true;
+        return false;
+    }
     private static Font GetMatchedFont(string path)
     {
-        lock (_uiLock) { if (_matchedFontCache.TryGetValue(path, out Font f)) return f; }
-        Font match = null;
-        foreach (var rule in _fontRules)
-        {
-            if (rule.Key.IsMatch(path)) { match = rule.Value; break; }
-        }
-        lock (_uiLock) { _matchedFontCache[path] = match; }
-        return match;
+        if (_matchedFontCache.TryGetValue(path, out Font f)) return f;
+        Font match = _fontRules.FirstOrDefault(r => r.regex.IsMatch(path)).font;
+        return _matchedFontCache[path] = match;
     }
 
     private static (float width, UILabel.Overflow method)? GetMatchedLayout(string path)
     {
-        lock (_uiLock) { if (_matchedLayoutCache.TryGetValue(path, out var l)) return l; }
-        (float width, UILabel.Overflow method)? res = null;
-        foreach (var rule in _layoutRules)
-        {
-            if (rule.regex.IsMatch(path)) { res = (rule.width, rule.method); break; }
-        }
-        lock (_uiLock) { _matchedLayoutCache[path] = res; }
-        return res;
+        if (_matchedLayoutCache.TryGetValue(path, out var l)) return l;
+        var rule = _layoutRules.FirstOrDefault(r => r.regex.IsMatch(path));
+        var res = rule.regex != null ? ((float width, UILabel.Overflow method)?)(rule.width, rule.method) : null;
+        return _matchedLayoutCache[path] = res;
     }
 
     [HarmonyPatch(typeof(SceneManager), nameof(SceneManager.Internal_SceneLoaded))]
@@ -300,6 +426,9 @@ public static class UIComponentPatch
         {
             _matchedFontCache.Clear();
             _matchedLayoutCache.Clear();
+
+            if (FLog.IsDeveloperContext)
+                FLog.Debug("[Visual] UI Caches cleared (Scene change or Manual trigger).");
         }
     }
     #endregion
@@ -315,10 +444,99 @@ public static class UIComponentPatch
         {
             if (_renderer == null || Width <= 0 || Width <= maxWidth) return;
             float ratio = maxWidth / Width;
-            Vector3 currentScale = _mesh.transform.localScale;
-            currentScale.x *= ratio;
-            _mesh.transform.localScale = currentScale;
+            Vector3 scale = _mesh.transform.localScale;
+            scale.x *= ratio;
+            _mesh.transform.localScale = scale;
         }
+    }
+    #endregion
+
+    // =========================================================================
+    // MODULE: UILabel Unclamp (UnclampPatch)
+    // =========================================================================
+
+    #region UILabel Unclamp
+    // Pre-compiled regexes shared across all label evaluations.
+    private static readonly Regex _whitespaceNewline = new(@"[\n ]*", RegexOptions.Compiled);
+    private static readonly Regex _newlineOnly       = new(@"[\n]",   RegexOptions.Compiled);
+
+    // Label names that must never be unclamped (they have fixed-size containers).
+    private static readonly HashSet<string> _unclampExcludes = new()
+    {
+        "DetailLabel", "Label_item_name"
+    };
+
+    /// <summary>
+    /// Postfix on <c>UILabel.ProcessText(bool, bool)</c>:
+    /// promotes a clamped label to <c>ResizeFreely</c> when the translated text has been
+    /// truncated (processed text differs from the raw text after stripping whitespace) and
+    /// the label meets all of the following conditions:
+    /// <list type="bullet">
+    ///   <item>label is valid, marked as changed, and non-empty</item>
+    ///   <item>overflow mode is currently <c>ClampContent</c></item>
+    ///   <item>max line count ≤ 3</item>
+    ///   <item>height &lt; 50 px and lineWidth &lt; 300 px (small fixed-size label)</item>
+    ///   <item>raw text contains no explicit newline characters</item>
+    ///   <item>label name is not in the exclusion list</item>
+    /// </list>
+    /// Left-aligned labels have their pivot reset to <c>Left</c> so the text grows
+    /// rightward rather than centring on the original anchor.
+    /// </summary>
+    [HarmonyPatch(typeof(UILabel), "ProcessText", new[] { typeof(bool), typeof(bool) })]
+    [HarmonyPostfix]
+    [HarmonyWrapSafe]
+    public static void PostfixUnclamp(UILabel __instance)
+    {
+        if (!__instance.IsSafe()) return;
+        if (!__instance.isValid || !__instance.mChanged) return;
+
+        string processed = _whitespaceNewline.Replace(__instance.mProcessedText ?? string.Empty, string.Empty);
+        if (string.IsNullOrEmpty(processed)) return;
+
+        string raw = _whitespaceNewline.Replace(__instance.mText ?? string.Empty, string.Empty);
+
+        if (__instance.overflowMethod != UILabel.Overflow.ClampContent) return;
+        if (raw == processed) return;
+        if (__instance.maxLineCount > 3) return;
+        if (_unclampExcludes.Contains(__instance.name)) return;
+        if (__instance.height >= 50 || __instance.lineWidth >= 300) return;
+        if (_newlineOnly.IsMatch(__instance.text ?? string.Empty)) return;
+
+        if (__instance.alignment == NGUIText.Alignment.Left)
+            __instance.pivot = UIWidget.Pivot.Left;
+
+        __instance.overflowMethod = UILabel.Overflow.ResizeFreely;
+        __instance.ProcessText();
+    }
+    #endregion
+
+    // =========================================================================
+    // MODULE 8: Font Base Load Guard (FixFontLoadPatch)
+    // =========================================================================
+
+    #region 8. FixFontLoadPatch — Crash Prevention
+    /// <summary>
+    /// Postfix on <c>CustomUILabel.Awake</c>:
+    /// if the label's <c>trueTypeFont</c> is <c>null</c> after <c>Awake</c> and our
+    /// <c>_baseFont</c> is ready, assigns it as a safe fallback.
+    /// This prevents the <c>NullReferenceException</c> that occurs in <c>ProcessText</c>
+    /// when a font bundle's internal name does not match the expected name in the
+    /// game's font reference table. Equivalent to legacy <c>FixFontLoadPatch</c>.
+    /// </summary>
+    [HarmonyPatch(typeof(CustomUILabel), nameof(CustomUILabel.Awake))]
+    [HarmonyPostfix]
+    [HarmonyWrapSafe]
+    public static void PostfixFixFontLoad(CustomUILabel __instance)
+    {
+        if (!ConfigManager.Visual.UIFont.Value || !_fontSystemReady) return;
+        if (!__instance.IsSafe()) return;
+
+        // Guard: if the label already has a valid font, do not interfere
+        if (__instance.trueTypeFont != null) return;
+
+        // Fallback: assign base font to prevent NRE in ProcessText
+        __instance.trueTypeFont = _baseFont;
+        FLog.Debug($"[Visual] FixFontLoad: fallback font assigned to '{__instance.gameObject.name}' (trueTypeFont was null).");
     }
     #endregion
 }

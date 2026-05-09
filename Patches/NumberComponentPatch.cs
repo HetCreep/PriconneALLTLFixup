@@ -1,7 +1,10 @@
-﻿using Elements;
+#nullable enable
+using Elements;
 using HarmonyLib;
 using Il2CppInterop.Runtime;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
+using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using XUnity.AutoTranslator.Plugin.Core;
@@ -12,12 +15,38 @@ namespace PriconneALLTLFixup.Patches;
 [HarmonyPatch]
 public static class NumberComponentPatch
 {
-    #region 1. Internal State & Static Registry
+    #region 1. Internal State & Dynamic Culture Cache
     private static readonly object _syncLock = new object();
-    private static readonly CultureInfo _culture = new CultureInfo("en-US");
 
-    private static readonly Dictionary<long, string> _convertedNumberRegistry = new Dictionary<long, string>(2048);
-    private static readonly Dictionary<int, long> _labelValueRegistry = new Dictionary<int, long>(1024);
+    private static CultureInfo?  _cachedCulture;
+    private static volatile string? _lastLangCode;
+
+    private static CultureInfo CurrentFormatCulture
+    {
+        get
+        {
+            string configLang = ConfigManager.Translation.Code.Value;
+
+            if (_cachedCulture == null || _lastLangCode != configLang)
+            {
+                try
+                {
+                    _cachedCulture = !string.IsNullOrEmpty(configLang)
+                        ? new CultureInfo(configLang)
+                        : CultureInfo.CurrentCulture;
+                }
+                catch
+                {
+                    _cachedCulture = CultureInfo.CurrentCulture;
+                }
+                _lastLangCode = configLang;
+                FLog.Debug($"[Number] Culture updated to '{_cachedCulture!.Name}' (config='{configLang}').");
+            }
+            return _cachedCulture!;
+        }
+    }
+
+    private static readonly Dictionary<IntPtr, long> _labelValueRegistry = new(1024);
 
     private static readonly Regex _numberDetectionRegex = new Regex(@"[1-9]\d{3,}", RegexOptions.Compiled);
     private static readonly Regex _dateExclusionRegex = new Regex(@"\d{2,4}[/\.\-]\d{2}[/\.\-]\d{2,4}", RegexOptions.Compiled);
@@ -26,20 +55,10 @@ public static class NumberComponentPatch
     private static readonly Regex _floatDetectionRegex = new Regex(@"(\d{4,})\.(\d+)", RegexOptions.Compiled);
     #endregion
 
-    #region 2. Module A: Engine Number Formatting (Int32 / Int64)
-    [HarmonyPatch(typeof(Il2CppSystem.Number), "FormatInt32")]
-    [HarmonyPatch(typeof(Il2CppSystem.Number), "FormatInt64")]
-    [HarmonyPostfix]
-    public static void PostfixEngineFormat(ref string __result, long value, ReadOnlySpan<char> format)
-    {
-        if (!ConfigManager.Visual.UIUniversal.Value || !Util.IsXuatActive()) return;
-        if (__result == null || format.Length > 0) return;
-
-        lock (_syncLock)
-        {
-            _convertedNumberRegistry[value] = __result;
-        }
-    }
+    #region 2. Module A: Engine Number Tracking (via NGUI Layer)
+    // NOTE: Patching Il2CppSystem.Number.FormatInt32 / FormatInt64 directly is not viable
+    // in Unity 6 / IL2CPP — the DMD trampoline emits invalid IL (InvalidProgramException).
+    // Number formatting is handled entirely at the NGUI and UILabel layers (Modules B & D).
     #endregion
 
     #region 3. Module B: NGUI CustomUILabel Integration
@@ -56,9 +75,9 @@ public static class NumberComponentPatch
             if (type == null) continue;
 
             if (type.Equals(Il2CppType.Of<int>()))
-                _labelValueRegistry[__instance.GetHashCode()] = obj.Unbox<int>();
+                _labelValueRegistry[__instance.Pointer] = obj.Unbox<int>();
             else if (type.Equals(Il2CppType.Of<long>()))
-                _labelValueRegistry[__instance.GetHashCode()] = obj.Unbox<long>();
+                _labelValueRegistry[__instance.Pointer] = obj.Unbox<long>();
         }
     }
 
@@ -68,11 +87,11 @@ public static class NumberComponentPatch
     {
         if (!ConfigManager.Visual.UIUniversal.Value || !__instance.IsSafe()) return;
 
-        if (_labelValueRegistry.TryGetValue(__instance.GetHashCode(), out long val))
+        if (_labelValueRegistry.TryGetValue(__instance.Pointer, out long val))
         {
             if (_dateExclusionRegex.IsMatch(__instance.text)) return;
 
-            string formatted = val.ToString("#,0", _culture);
+            string formatted = val.ToString("#,0", CurrentFormatCulture);
             string original = val.ToString();
 
             if (formatted != original)
@@ -88,19 +107,16 @@ public static class NumberComponentPatch
     {
         if (!ConfigManager.Visual.UIUniversal.Value || string.IsNullOrEmpty(text)) return;
 
-        if (text.Contains("Player ID") || _dateExclusionRegex.IsMatch(text)) return;
+        if (text.IndexOf("ID", StringComparison.OrdinalIgnoreCase) >= 0 || _dateExclusionRegex.IsMatch(text)) return;
 
+        // Format any bare large numbers found in the translated string.
+        // (FormatInt32 engine-level patch is not viable on IL2CPP Unity 6;
+        //  we apply formatting here at the XUAT boundary instead.)
         var matches = _numberDetectionRegex.Matches(text);
         foreach (Match match in matches)
         {
             if (long.TryParse(match.Value, out long num))
-            {
-                bool known;
-                lock (_syncLock) { known = _convertedNumberRegistry.ContainsKey(num); }
-
-                if (known)
-                    text = text.Replace(match.Value, num.ToString("#,0", _culture));
-            }
+                text = text.Replace(match.Value, num.ToString("#,0", CurrentFormatCulture));
         }
     }
     #endregion
@@ -120,7 +136,7 @@ public static class NumberComponentPatch
         {
             if (long.TryParse(floatMatch.Groups[1].Value, out long frontPart))
             {
-                string formattedFront = frontPart.ToString("#,0", _culture);
+                string formattedFront = frontPart.ToString("#,0", CurrentFormatCulture);
                 value = value.Replace(floatMatch.Groups[1].Value, formattedFront);
                 return;
             }
@@ -132,7 +148,7 @@ public static class NumberComponentPatch
             foreach (Group group in hpMatch.Groups)
             {
                 if (long.TryParse(group.Value, out long n))
-                    value = value.Replace(group.Value, n.ToString("#,0", _culture));
+                    value = value.Replace(group.Value, n.ToString("#,0", CurrentFormatCulture));
             }
             return;
         }
@@ -141,7 +157,7 @@ public static class NumberComponentPatch
         if (gradMatch.Success)
         {
             if (long.TryParse(gradMatch.Groups[2].Value, out long n))
-                value = value.Replace(gradMatch.Groups[2].Value, n.ToString("#,0", _culture));
+                value = value.Replace(gradMatch.Groups[2].Value, n.ToString("#,0", CurrentFormatCulture));
             return;
         }
 
@@ -150,7 +166,7 @@ public static class NumberComponentPatch
             if (__instance.overflowMethod == UILabel.Overflow.ClampContent)
                 __instance.overflowMethod = UILabel.Overflow.ShrinkContent;
 
-            value = pureNum.ToString("#,0", _culture);
+            value = pureNum.ToString("#,0", CurrentFormatCulture);
         }
     }
     #endregion
@@ -162,7 +178,6 @@ public static class NumberComponentPatch
     {
         lock (_syncLock)
         {
-            _convertedNumberRegistry.Clear();
             _labelValueRegistry.Clear();
         }
     }
