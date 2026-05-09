@@ -38,10 +38,10 @@ jobs:
       uses: microsoft/setup-msbuild@v2
 
     - name: Restore Dependencies
-      run: msbuild ${{ env.Solution_Name }} /t:Restore /p:Configuration=${{ env.Configuration }}
+      run: msbuild ${{ env.Solution_Name }} /t:Restore /p:Configuration=${{ env.Configuration }} /p:GITHUB_ACTIONS=true
 
     - name: Build Project
-      run: msbuild ${{ env.Solution_Name }} /p:Configuration=${{ env.Configuration }}
+      run: msbuild ${{ env.Solution_Name }} /p:Configuration=${{ env.Configuration }} /p:GITHUB_ACTIONS=true
 
     - name: Create Release
       if: startsWith(github.ref, 'refs/tags/')
