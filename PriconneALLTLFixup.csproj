@@ -12,6 +12,15 @@
 
 		<BepInDir Condition="'$(GITHUB_ACTIONS)' == 'true'">$(ProjectDir)libs</BepInDir>
 		<BepInDir Condition="'$(GITHUB_ACTIONS)' != 'true'">$(UserProfile)\priconner\BepInEx</BepInDir>
+
+		<XUATDir Condition="'$(GITHUB_ACTIONS)' == 'true'"></XUATDir>
+		<XUATDir Condition="'$(GITHUB_ACTIONS)' != 'true'">XUnity.AutoTranslator\</XUATDir>
+		
+		<SugoiDir Condition="'$(GITHUB_ACTIONS)' == 'true'"></SugoiDir>
+		<SugoiDir Condition="'$(GITHUB_ACTIONS)' != 'true'">XUnity.AutoTranslator\Translators\</SugoiDir>
+		
+		<RedirectorDir Condition="'$(GITHUB_ACTIONS)' == 'true'"></RedirectorDir>
+		<RedirectorDir Condition="'$(GITHUB_ACTIONS)' != 'true'">XUnity.ResourceRedirector\</RedirectorDir>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -65,7 +74,7 @@
 			<HintPath>$(BepInDir)\core\Fastenshtein.dll</HintPath>
 		</Reference>
 		<Reference Include="ICSharpCode.SharpZipLib">
-			<HintPath>$(BepInDir)\plugins\XUnity.AutoTranslator\ICSharpCode.SharpZipLib.dll</HintPath>
+			<HintPath>$(BepInDir)\plugins\$(XUATDir)ICSharpCode.SharpZipLib.dll</HintPath>
 		</Reference>
 		<Reference Include="Il2CppInterop.Common">
 			<HintPath>$(BepInDir)\core\Il2CppInterop.Common.dll</HintPath>
@@ -89,7 +98,7 @@
 			<HintPath>$(BepInDir)\core\SemanticVersioning.dll</HintPath>
 		</Reference>
 		<Reference Include="SugoiOfflineTranslator">
-			<HintPath>$(BepInDir)\plugins\XUnity.AutoTranslator\Translators\SugoiOfflineTranslator.dll</HintPath>
+			<HintPath>$(BepInDir)\plugins\$(SugoiDir)SugoiOfflineTranslator.dll</HintPath>
 		</Reference>
 		<Reference Include="UnityEngine.AIModule">
 			<HintPath>$(BepInDir)\interop\UnityEngine.AIModule.dll</HintPath>
@@ -191,22 +200,22 @@
 			<HintPath>$(BepInDir)\interop\UnityEngine.XRModule.dll</HintPath>
 		</Reference>
 		<Reference Include="XUnity.AutoTranslator.Plugin.BepInEx">
-			<HintPath>$(BepInDir)\plugins\XUnity.AutoTranslator\XUnity.AutoTranslator.Plugin.BepInEx.dll</HintPath>
+			<HintPath>$(BepInDir)\plugins\$(XUATDir)XUnity.AutoTranslator.Plugin.BepInEx.dll</HintPath>
 		</Reference>
 		<Reference Include="XUnity.AutoTranslator.Plugin.BepInEx-IL2CPP">
-			<HintPath>$(BepInDir)\plugins\XUnity.AutoTranslator\XUnity.AutoTranslator.Plugin.BepInEx-IL2CPP.dll</HintPath>
+			<HintPath>$(BepInDir)\plugins\$(XUATDir)XUnity.AutoTranslator.Plugin.BepInEx-IL2CPP.dll</HintPath>
 		</Reference>
 		<Reference Include="XUnity.AutoTranslator.Plugin.Core">
-			<HintPath>$(BepInDir)\plugins\XUnity.AutoTranslator\XUnity.AutoTranslator.Plugin.Core.dll</HintPath>
+			<HintPath>$(BepInDir)\plugins\$(XUATDir)XUnity.AutoTranslator.Plugin.Core.dll</HintPath>
 		</Reference>
 		<Reference Include="XUnity.AutoTranslator.Plugin.ExtProtocol">
-			<HintPath>$(BepInDir)\plugins\XUnity.AutoTranslator\XUnity.AutoTranslator.Plugin.ExtProtocol.dll</HintPath>
+			<HintPath>$(BepInDir)\plugins\$(XUATDir)XUnity.AutoTranslator.Plugin.ExtProtocol.dll</HintPath>
 		</Reference>
 		<Reference Include="XUnity.Common">
 			<HintPath>$(BepInDir)\core\XUnity.Common.dll</HintPath>
 		</Reference>
 		<Reference Include="XUnity.ResourceRedirector">
-			<HintPath>$(BepInDir)\plugins\XUnity.ResourceRedirector\XUnity.ResourceRedirector.dll</HintPath>
+			<HintPath>$(BepInDir)\plugins\$(RedirectorDir)XUnity.ResourceRedirector.dll</HintPath>
 		</Reference>
 	</ItemGroup>
 
