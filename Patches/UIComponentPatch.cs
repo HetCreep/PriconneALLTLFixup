@@ -32,6 +32,9 @@ public static class UIComponentPatch
 
     private static readonly Dictionary<string, Font> _matchedFontCache = new(2048);
     private static readonly Dictionary<string, (float width, UILabel.Overflow method)?> _matchedLayoutCache = new(2048);
+
+    // --- Diagnostic: logs original game values before our rule is applied (DeveloperLogs only, NOT pushed) ---
+    private static readonly HashSet<string> _diagLoggedPaths = new(2048);
     #endregion
 
     #region 2. System Loader (Traceable & Robust)
@@ -217,6 +220,12 @@ public static class UIComponentPatch
             var layout = GetMatchedLayout(path);
             if (layout.HasValue)
             {
+                // --- DIAGNOSTIC (DeveloperLogs=true only): log original game value once per unique path ---
+                if (FLog.IsDeveloperContext && _diagLoggedPaths.Add(path))
+                    FLog.Debug($"[ResizeDiag] {path}" +
+                               $" | game={label.lineWidth}px {label.overflowMethod}" +
+                               $" → rule={layout.Value.width}px {layout.Value.method}");
+
                 label.lineWidth = (int)layout.Value.width;
                 label.overflowMethod = layout.Value.method;
 
@@ -423,6 +432,7 @@ public static class UIComponentPatch
         {
             _matchedFontCache.Clear();
             _matchedLayoutCache.Clear();
+            _diagLoggedPaths.Clear(); // reset so entering a new scene re-logs fresh values
 
             if (FLog.IsDeveloperContext)
                 FLog.Debug("[Visual] UI Caches cleared (Scene change or Manual trigger).");

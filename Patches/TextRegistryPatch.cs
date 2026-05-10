@@ -112,21 +112,12 @@ public static class TextRegistryPatch
                     isEffectGroup = true;
                 }
 
-                if (sequenceCount > 2 && StoredSkillTexts.Count > 0)
-                {
-                    var lastIdx = StoredSkillTexts.Count - 1;
-                    var mergedItem = StoredSkillTexts[lastIdx];
-
-                    mergedItem.Text = string.Concat(mergedItem.Text, content);
-                    StoredSkillTexts[lastIdx] = mergedItem;
-
-                    _detailTextList.RemoveAt(i);
-                    i--;
-                }
-                else
-                {
-                    StoredSkillTexts.Add(new ProcessedItem(item.Item1, content, isEffectGroup ? 1 : 0));
-                }
+                // NOTE: Previously this block merged items and called RemoveAt(i) to remove them
+                // from _detailTextList. That caused XUAT to never see the removed items, leaving
+                // skill description text permanently in Japanese.
+                // Fix: always add to StoredSkillTexts individually — never remove from _detailTextList.
+                // XUAT will hook each UILabel.text setter after Initialize and translate every item.
+                StoredSkillTexts.Add(new ProcessedItem(item.Item1, content, isEffectGroup ? 1 : 0));
             }
         }
     }

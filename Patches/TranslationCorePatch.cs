@@ -33,6 +33,12 @@ public static class TranslationCorePatch
     private static readonly Regex ColorRegex = new(@"[\[\(]([0-9A-Fa-fsS]{6,10})[\]\)]", RegexOptions.Compiled);
     private static readonly Regex GradientRegex = new(@"[\[\(]([0-9A-Fa-f,sS\s]{13,20})[\]\)]", RegexOptions.Compiled);
     private static readonly Regex PlaceholderHallucinationRegex = new(@"[\[\(](\s*\d+\s*)[\]\)]", RegexOptions.Compiled);
+
+    // Strips multi-segment NGUI bracket tags MT engines produce (e.g. [FF7C4E,D62,146]).
+    // Valid NGUI color tags are exactly [RRGGBB] (6 hex) or [-]. Cross-class repair cannot
+    // fix these because the original uses ColorRegex and the translation uses GradientRegex.
+    private static readonly Regex MalformedNguiTagRegex = new(
+        @"\[[0-9A-Fa-f]{3,6}(?:,[0-9A-Fa-f]{3,6})+\]", RegexOptions.Compiled);
     #endregion
 
     #region 2. Module A: Preprocessor & Repair (SetText)
@@ -118,6 +124,12 @@ public static class TranslationCorePatch
         }
 
         text = text.Replace("[--]", "[-]").Replace(@"\ n", @"\n").Trim();
+
+        // Strip multi-segment bracket color tags that MT engines produce from NGUI [RRGGBB] codes.
+        // These appear as literal text (e.g. [FF7C4E,D62,146]) because they fail both
+        // ColorRegex (6-10 chars) and the cross-class repair path.
+        if (MalformedNguiTagRegex.IsMatch(text))
+            text = MalformedNguiTagRegex.Replace(text, string.Empty);
     }
     #endregion
 
