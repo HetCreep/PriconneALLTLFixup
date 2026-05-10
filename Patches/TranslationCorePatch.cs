@@ -58,6 +58,11 @@ public static class TranslationCorePatch
 
         text = text.Sanitize();
 
+        // Always strip MT-hallucinated multi-segment color tags (e.g. [FF7C4E,D62,146]).
+        // This is not a repair feature — it must run regardless of TranslationRepair setting.
+        if (MalformedNguiTagRegex.IsMatch(text) && !MalformedNguiTagRegex.IsMatch(originalText))
+            text = MalformedNguiTagRegex.Replace(text, string.Empty);
+
         if (!ConfigManager.Translation.TranslationRepair.Value) return true;
 
         try

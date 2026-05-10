@@ -518,8 +518,11 @@ public static class UIComponentPatch
         if (__instance.height < 25 && __instance.maxLineCount <= 1) return;
         if (_newlineOnly.IsMatch(__instance.text ?? string.Empty)) return;
 
-        if (__instance.alignment == NGUIText.Alignment.Left)
-            __instance.pivot = UIWidget.Pivot.Left;
+        // Don't unclamp Center/Right-aligned labels — they grow leftward when expanded,
+        // displacing UI elements like the shop reset-daily footer label far from their
+        // intended position. Only Left-aligned labels safely grow rightward.
+        if (__instance.alignment != NGUIText.Alignment.Left) return;
+        __instance.pivot = UIWidget.Pivot.Left;
 
         __instance.overflowMethod = UILabel.Overflow.ResizeFreely;
         __instance.ProcessText();
