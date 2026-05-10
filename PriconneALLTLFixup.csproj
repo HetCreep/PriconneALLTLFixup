@@ -234,7 +234,7 @@
 			<InputAssemblies Include="$(OutputPath)Fastenshtein.dll" />
 		</ItemGroup>
 
-		<ILRepack Parallel="true" InputAssemblies="@(InputAssemblies)" Internalize="false" TargetKind="SameAsPrimaryAssembly" OutputFile="$(OutputPath)$(TargetName).dll" LibraryPath="$(BepInDir)\core;$(BepInDir)\interop;$(BepInDir)\plugins" />
+		<ILRepack Parallel="true" InputAssemblies="@(InputAssemblies)" Internalize="false" TargetKind="SameAsPrimaryAssembly" OutputFile="$(OutputPath)$(TargetName).dll" LibraryPath="$(OutputPath);$(BepInDir)\core;$(BepInDir)\interop;$(BepInDir)\plugins" />
 
 		<Delete Files="$(OutputPath)Fastenshtein.dll" />
 	</Target>
