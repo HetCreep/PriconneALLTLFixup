@@ -24,10 +24,13 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<Compile Remove="Base\**" />
 		<Compile Remove="libs\**" />
 		<Compile Remove="Patches\**" />
+		<EmbeddedResource Remove="Base\**" />
 		<EmbeddedResource Remove="libs\**" />
 		<EmbeddedResource Remove="Patches\**" />
+		<None Remove="Base\**" />
 		<None Remove="libs\**" />
 		<None Remove="Patches\**" />
 	</ItemGroup>
