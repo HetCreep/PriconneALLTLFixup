@@ -38,12 +38,11 @@ An advanced performance optimization, visual enhancement, and localization repai
 
 ## ✨ Key Features & Technical Capabilities
 
-### 1. Smart Localization Engine (3-Tier Language Detection)
-- **Intelligent Path Redirection**: Determines its resource directory (`BepInEx\Translation\{ISO-639-1}`) using a 3-tier priority system.
-    - **Manual Mode**: Explicitly set a language code in config to force specific asset loading.
-    - **XUAT Reflection**: Queries the XUAT plugin instance for its active language at runtime.
-    - **INI Fallback**: Reads `AutoTranslatorConfig.ini → [General] Language=` directly if reflection returns empty.
-- **Font Discovery Fallback**: If `font_base.unity3d` is not found in the configured language folder, the mod auto-scans all `Translation/` subfolders and uses the first match found.
+### 1. Smart Localization Engine (2-Tier Language Detection)
+- **Intelligent Path Redirection**: Determines its resource directory (`BepInEx\Translation\{ISO-639-1}`) using a strict 2-tier priority system.
+    - **Manual Mode**: Explicitly set `LanguageCode` in config to force specific asset loading.
+    - **XUAT Auto-Detect**: Queries the XUAT plugin instance for its active language at runtime. If both are empty, all font/layout patches are cleanly disabled with a warning.
+- **Graceful Addon Fallback**: If any addon file is missing, the corresponding feature is silently disabled with a log entry — the mod never crashes or falls through to a wrong language's assets.
 
 ### 2. Visual & Typography Mastery
 - **Universal Font Redirection**: Globally overrides hardcoded Japanese game fonts using custom AssetBundles. Applies `font_base` by default and allows per-object overrides via `_01.font.txt`.
@@ -100,6 +99,7 @@ An advanced performance optimization, visual enhancement, and localization repai
 3.  **Deployment**: Copy the `.dll` file into your game's plugin folder: `BepInEx\plugins\`.
 4.  **First Run**: Launch the game once to generate the default configuration at `BepInEx\config\PriconneALLTLFixup.cfg`.
 5.  **Assets Setup**: Place your custom fonts and mapping files in the corresponding language folder: `BepInEx\Translation\{LanguageCode}\Font\` and `Other\`.
+6.  **Optional Charset**: Download the `charset.txt` for your language from [`addon/Font/`](https://github.com/HetCreep/PriconneALLTLFixup/tree/main/addon/Font) on GitHub and place it in `BepInEx\Translation\{LanguageCode}\Font\charset.txt`.
 
 ---
 
@@ -111,7 +111,7 @@ The mod organizes its intelligence and assets within the `BepInEx\Translation\{I
 | :--- | :--- |
 | `Font\font_base.unity3d` | **Global Default**: Primary high-quality font bundle applied to all text elements unless specified otherwise. |
 | `Font\*.unity3d` | **Specialized Fonts**: Additional AssetBundles for specific artistic UI needs (Bold, Handwriting, etc.). |
-| `Font\charset.txt` | **Custom Charset**: Optional file listing extra Unicode ranges or characters to pre-render into the font texture. |
+| `Font\charset.txt` | **Custom Charset**: Optional file listing Unicode ranges for XUAT to pre-render into the font texture. Download per-language files from [`addon/Font/`](https://github.com/HetCreep/PriconneALLTLFixup/tree/main/addon/Font). If missing, all Unicode ranges are rendered (heavier, slower). |
 | `Other\_01.font.txt` | **Font Mapping Rules**: Defines which GameObjects or Hierarchy Paths use specific font bundles (supports wildcards `*`). |
 | `Other\_02.resize.txt` | **Layout Boundaries**: Defines maximum width limits and overflow methods (`ResizeHeight` / `ShrinkContent`) for dynamic UI. |
 | `Other\text_id.txt` | **Core Registry**: Maps internal `eTextId` enums to localized strings. Enables multi-language search for characters, items, and equipment. |
@@ -142,8 +142,8 @@ All patch toggles support **live hot-reload** — changes take effect immediatel
 ### [3. Visual & Font]
 | Key | Default | Description |
 | :--- | :---: | :--- |
-| `EnableFontReplacement` | `true` | Overrides game fonts globally via AssetBundles. Font resolved by: configured `LanguageCode` → auto-scan all `Translation/` subfolders → game default. Uses `font_base` + `_01.font.txt` rules. |
-| `EnableUIResizer` | `true` | Dynamic layout engine for text overflow/word-wrap based on `_02.resize.txt`. |
+| `EnableFontReplacement` | `true` | Overrides game fonts globally via AssetBundles. Font resolved by: configured `LanguageCode` → XUAT auto-detect. If `font_base.unity3d` is missing, this feature is automatically disabled with a log warning. Uses `font_base` + `_01.font.txt` rules. |
+| `EnableUIResizer` | `true` | Dynamic layout engine for text overflow/word-wrap based on `_02.resize.txt`. If `_02.resize.txt` is missing, automatically disabled. |
 | `EnableNumberFormatting` | `true` | Injects thousands separators across all game number displays. Culture-aware. |
 | `EnableStoryFixes` | `true` | **(silent)** Story engine patches: strips stray TMPro tags from NGUI labels, place-name layout, pre-translation pumps. |
 | `EnableAtlasRedirect` | `true` | **(silent)** Loads custom atlas files from `atlases/` and redirects UISprite lookups. |
@@ -283,7 +283,25 @@ We are actively searching for talented developers with expertise in **C#**, **IL
 2. **Library Setup**: Ensure necessary DLLs are in the `libs/` folder (organized into `core`, `interop`, and `plugins` subfolders).
 3. Open `PriconneALLTLFixup.sln` using **Visual Studio 2022**.
 4. Set the build configuration to **Release**.
-5. Build the solution. The automated **ILRepack** task combines the main DLL with `Fastenshtein.dll` into a single high-performance package.
+5. Build the solution. `Fastenshtein.dll` ships as a separate dependency alongside the main DLL.
+
+## 📦 Addon Downloads (`addon/Font/`)
+
+Charset configuration files for font rendering are available for separate download from the [`addon/Font/`](https://github.com/HetCreep/PriconneALLTLFixup/tree/main/addon/Font) folder.
+
+| File | Languages | Unicode Blocks |
+| :--- | :--- | :--- |
+| `charset.txt` | All languages (combined) | ASCII + Latin + Thai + CJK + Hangul + Cyrillic + Arabic + Hebrew |
+| `charset_Southeast Asian Language.txt` | Thai, Vietnamese, Malay, etc. | Thai `U+0E00` + Latin Extended |
+| `charset_East Asian Languages.txt` | Chinese, Japanese, Korean | Hiragana + Katakana + CJK + Hangul |
+| `charset_Latin and European Languages.txt` | English, French, German, etc. | ASCII + Latin-1 + Latin Extended |
+| `charset_Slavic and Russian Language.txt` | Russian, Bulgarian, etc. | Cyrillic `U+0400–U+052F` |
+| `charset_Middle Eastern Languages.txt` | Arabic, Hebrew, Farsi | Arabic `U+0600` + Hebrew `U+0590` |
+
+**Usage:** Download the file matching your translation language, rename it to `charset.txt`, and place it in `BepInEx\Translation\{LanguageCode}\Font\charset.txt`.
+
+> [!TIP]
+> Using a per-language `charset.txt` significantly reduces font texture memory usage compared to the all-languages `charset.txt`.
 
 ---
 

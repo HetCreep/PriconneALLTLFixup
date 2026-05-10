@@ -46,33 +46,23 @@ public static class UIComponentPatch
                 string xuatLang = Util.GetXuatLanguage();
                 FLog.Info($"[Bridge] XUAT Connectivity Check: Detected Language = '{xuatLang}'");
 
+                // 2-tier: 1) User config  2) XUAT auto-detect — no directory scan fallback
                 string finalLang = ConfigManager.Translation.Code.Value;
                 if (string.IsNullOrWhiteSpace(finalLang)) finalLang = xuatLang;
+
+                if (string.IsNullOrWhiteSpace(finalLang))
+                {
+                    FLog.Warn("[Visual] Language not configured and XUAT returned empty. " +
+                              "Font/Layout patches are DISABLED. " +
+                              "Set 'LanguageCode' in config or ensure XUAT is active.");
+                    _initialized = true;
+                    return;
+                }
+
                 FLog.Info($"[Visual] Master Framework initiating patch for: [{finalLang.ToUpper()}]");
 
-                string root = Path.Combine(BepInEx.Paths.BepInExRootPath, "Translation", finalLang);
-
+                string root     = Path.Combine(BepInEx.Paths.BepInExRootPath, "Translation", finalLang);
                 string fontPath = Path.Combine(root, "Font", "font_base.unity3d");
-
-                // Fallback: scan all language subfolders if lang is empty or font not found there
-                if (!File.Exists(fontPath))
-                {
-                    string translationRoot = Path.Combine(BepInEx.Paths.BepInExRootPath, "Translation");
-                    if (Directory.Exists(translationRoot))
-                    {
-                        foreach (string langDir in Directory.GetDirectories(translationRoot))
-                        {
-                            string candidate = Path.Combine(langDir, "Font", "font_base.unity3d");
-                            if (File.Exists(candidate))
-                            {
-                                fontPath = candidate;
-                                root = langDir; // update root so rules/supplementary fonts use correct path
-                                FLog.Debug($"[Visual] Font fallback: found in '{Path.GetFileName(langDir)}' subfolder.");
-                                break;
-                            }
-                        }
-                    }
-                }
 
                 if (File.Exists(fontPath))
                 {
@@ -81,13 +71,20 @@ public static class UIComponentPatch
                 }
                 else
                 {
-                    FLog.Warn("[Visual] Critical: 'font_base.unity3d' missing. Font patching is DISABLED.");
+                    FLog.Warn($"[Visual] 'font_base.unity3d' not found in '{root}\\Font'. " +
+                               "Font patch DISABLED. Download from addon/Font/ on GitHub.");
                     _fontSystemReady = false;
                 }
 
                 if (_fontSystemReady)
                 {
                     LoadSupplementaryFonts(Path.Combine(root, "Font"));
+
+                    // charset.txt is consumed by XUAT — we only log its presence/absence
+                    string charsetPath = Path.Combine(root, "Font", "charset.txt");
+                    if (!File.Exists(charsetPath))
+                        FLog.Debug("[Visual] 'charset.txt' not found — XUAT will render all Unicode ranges (no character pre-filter). " +
+                                   "Download a per-language file from addon/Font/ on GitHub.");
 
                     string fontRulePath = Path.Combine(root, "Other", "_01.font.txt");
                     if (File.Exists(fontRulePath))
@@ -97,7 +94,7 @@ public static class UIComponentPatch
                     }
                     else
                     {
-                        FLog.Info("[Visual] Info: '_01.font.txt' missing. Only 'font_base' will be applied globally.");
+                        FLog.Debug("[Visual] '_01.font.txt' not found — 'font_base' applied globally (no per-element font rules).");
                         _fontRulesReady = false;
                     }
                 }
@@ -110,7 +107,7 @@ public static class UIComponentPatch
                 }
                 else
                 {
-                    FLog.Info("[Visual] Info: '_02.resize.txt' missing. Using default game layout.");
+                    FLog.Debug("[Visual] '_02.resize.txt' not found — default game container widths used (layout patch disabled).");
                     _layoutRulesReady = false;
                 }
 

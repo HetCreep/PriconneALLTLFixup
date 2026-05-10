@@ -125,7 +125,11 @@ public static class TranslationCorePatch
     public static void InitializeNameDict()
     {
         string path = Path.Combine(Paths.BepInExRootPath, "Translation", ConfigManager.Translation.Code.Value, "Other", "unit_names.txt");
-        if (!File.Exists(path)) return;
+        if (!File.Exists(path))
+        {
+            FLog.Debug($"[Dict] 'unit_names.txt' not found at '{path}' — multi-language name aliases disabled.");
+            return;
+        }
 
         try
         {
