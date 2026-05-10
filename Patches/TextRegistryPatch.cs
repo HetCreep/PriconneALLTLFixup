@@ -100,6 +100,10 @@ public static class TextRegistryPatch
             TranslatedStrings.TryGetValue(SKILL_EFFECT_HEADER_ID, out string targetHeader);
             OriginalStrings.TryGetValue(SKILL_EFFECT_HEADER_ID, out string originalHeader);
 
+            // Collect indices to remove AFTER the loop — mutating an IL2CPP List
+            // via RemoveAt while iterating causes ArgumentOutOfRangeException.
+            var toRemove = new System.Collections.Generic.List<int>();
+
             for (int i = 0; i < _detailTextList.Count; i++)
             {
                 sequenceCount++;
@@ -112,25 +116,23 @@ public static class TextRegistryPatch
                     isEffectGroup = true;
                 }
 
-                // Merge consecutive skill-effect lines so XUAT sees one combined JP string
-                // matching the multi-line regex patterns in Translation/en/Text/Character/.
-                // RemoveAt is intentional: the merged item replaces the removed ones.
                 if (sequenceCount > 2 && StoredSkillTexts.Count > 0)
                 {
                     var lastIdx = StoredSkillTexts.Count - 1;
                     var mergedItem = StoredSkillTexts[lastIdx];
-
                     mergedItem.Text = string.Concat(mergedItem.Text, content);
                     StoredSkillTexts[lastIdx] = mergedItem;
-
-                    _detailTextList.RemoveAt(i);
-                    i--;
+                    toRemove.Add(i); // defer — do NOT RemoveAt here
                 }
                 else
                 {
                     StoredSkillTexts.Add(new ProcessedItem(item.Item1, content, isEffectGroup ? 1 : 0));
                 }
             }
+
+            // Remove in reverse order so earlier indices remain valid
+            for (int j = toRemove.Count - 1; j >= 0; j--)
+                _detailTextList.RemoveAt(toRemove[j]);
         }
     }
     #endregion
