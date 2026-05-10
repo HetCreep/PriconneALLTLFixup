@@ -23,6 +23,18 @@
 		<RedirectorDir Condition="'$(GITHUB_ACTIONS)' != 'true'">XUnity.ResourceRedirector\</RedirectorDir>
 	</PropertyGroup>
 
+	<!-- Auto-deploy: copy built DLL to BepInEx/plugins after every successful build.
+	     If the game is open and the DLL is locked, the copy fails with a warning
+	     (does NOT break the build). Close the game and rebuild to deploy. -->
+	<Target Name="AfterBuild" Condition="'$(GITHUB_ACTIONS)' != 'true'">
+		<Copy SourceFiles="$(OutputPath)$(AssemblyName).dll"
+		      DestinationFolder="$(BepInDir)\plugins\"
+		      OverwriteReadOnlyFiles="true"
+		      SkipUnchangedFiles="false"
+		      ContinueOnError="WarnAndContinue" />
+		<Message Text="&#x2705; [Deploy] $(AssemblyName).dll &#x2192; $(BepInDir)\plugins\" Importance="High" />
+	</Target>
+
 	<ItemGroup>
 		<Compile Remove="addon\**" />
 		<Compile Remove="Base\**" />
