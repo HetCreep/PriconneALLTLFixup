@@ -467,10 +467,16 @@ public static class UIComponentPatch
     private static readonly Regex _whitespaceNewline = new(@"[\n ]*", RegexOptions.Compiled);
     private static readonly Regex _newlineOnly       = new(@"[\n]",   RegexOptions.Compiled);
 
-    // Label names that must never be unclamped (they have fixed-size containers).
+    // Label names that must never be unclamped (fixed-size containers or icon badges).
     private static readonly HashSet<string> _unclampExcludes = new()
     {
-        "DetailLabel", "Label_item_name"
+        // Content panels — already have scroll/fixed containers
+        "DetailLabel", "Label_item_name",
+        // Lv requirement badges on item icons (e.g. Lv290 badge)
+        "Label_lv", "LvLabel", "Label_level", "lv_label", "levelLabel",
+        // Shop footer info labels (Reset Daily, stock count)
+        "Label_update", "Label_info", "Label_info_text", "Label_reset",
+        "Label_stock", "Label_count", "Label_appear",
     };
 
     /// <summary>
@@ -507,6 +513,9 @@ public static class UIComponentPatch
         if (__instance.maxLineCount > 3) return;
         if (_unclampExcludes.Contains(__instance.name)) return;
         if (__instance.height >= 50 || __instance.lineWidth >= 300) return;
+        // Don't unclamp very short single-line labels — these are icon badges (Lv, count, etc.)
+        // that live in fixed-size overlay containers and must not grow beyond their allocated space.
+        if (__instance.height < 25 && __instance.maxLineCount <= 1) return;
         if (_newlineOnly.IsMatch(__instance.text ?? string.Empty)) return;
 
         if (__instance.alignment == NGUIText.Alignment.Left)
