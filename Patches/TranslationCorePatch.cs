@@ -126,9 +126,10 @@ public static class TranslationCorePatch
         text = text.Replace("[--]", "[-]").Replace(@"\ n", @"\n").Trim();
 
         // Strip multi-segment bracket color tags that MT engines produce from NGUI [RRGGBB] codes.
-        // These appear as literal text (e.g. [FF7C4E,D62,146]) because they fail both
-        // ColorRegex (6-10 chars) and the cross-class repair path.
-        if (MalformedNguiTagRegex.IsMatch(text))
+        // Guard: only strip when the original did NOT have this pattern — if the game intentionally
+        // uses gradient tags like [FF7C4E,D62,146], they appear in both original and translated.
+        // Stripping without this guard caused party-label text to become invisible.
+        if (MalformedNguiTagRegex.IsMatch(text) && !MalformedNguiTagRegex.IsMatch(original))
             text = MalformedNguiTagRegex.Replace(text, string.Empty);
     }
     #endregion

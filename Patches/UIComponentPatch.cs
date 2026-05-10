@@ -47,7 +47,7 @@ public static class UIComponentPatch
             try
             {
                 string xuatLang = Util.GetXuatLanguage();
-                FLog.Info($"[Bridge] XUAT Connectivity Check: Detected Language = '{xuatLang}'");
+                FLog.Info($"[Visual] XUAT Language: '{xuatLang}' | Our LanguageCode override: '{ConfigManager.Translation.Code.Value}'");
 
                 // 2-tier: 1) User config  2) XUAT auto-detect — no directory scan fallback
                 string finalLang = ConfigManager.Translation.Code.Value;

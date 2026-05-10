@@ -24,18 +24,20 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<Compile Remove="addon\**" />
 		<Compile Remove="Base\**" />
 		<Compile Remove="libs\**" />
 		<Compile Remove="Patches\**" />
-		<EmbeddedResource Remove="addon\**" />
 		<EmbeddedResource Remove="Base\**" />
 		<EmbeddedResource Remove="libs\**" />
 		<EmbeddedResource Remove="Patches\**" />
-		<None Remove="addon\**" />
 		<None Remove="Base\**" />
 		<None Remove="libs\**" />
 		<None Remove="Patches\**" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <None Remove=".gitignore" />
+	  <None Remove="skills-lock.json" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -56,6 +58,12 @@
 		<Compile Include="Patches\TextSafetyPatch.cs" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<PackageReference Include="ILRepack.Lib.MSBuild.Task" Version="2.0.44.2">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+	</ItemGroup>
 
 	<ItemGroup>
 		<Reference Include="0Harmony">
@@ -225,6 +233,16 @@
 		<Message Importance="High" Text="[Sync] ✨ Version Sync Task Completed." />
 	</Target>
 
+	<Target Name="ILRepack" AfterTargets="Build">
+		<ItemGroup>
+			<InputAssemblies Include="$(OutputPath)$(TargetName).dll" />
+			<InputAssemblies Include="$(OutputPath)Fastenshtein.dll" />
+		</ItemGroup>
+
+		<ILRepack Parallel="true" InputAssemblies="@(InputAssemblies)" Internalize="false" TargetKind="SameAsPrimaryAssembly" OutputFile="$(OutputPath)$(TargetName).dll" LibraryPath="$(BepInDir)\core;$(BepInDir)\interop;$(BepInDir)\plugins" />
+
+		<Delete Files="$(OutputPath)Fastenshtein.dll" />
+	</Target>
 
 	<Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition="'$(GITHUB_ACTIONS)' != 'true'">
 		<ItemGroup>
