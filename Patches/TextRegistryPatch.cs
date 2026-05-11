@@ -94,40 +94,23 @@ public static class TextRegistryPatch
         lock (_syncLock)
         {
             StoredSkillTexts.Clear();
-
-            // IMPORTANT: IL2CPP List<ValueTuple<enum,string>> interop quirks:
-            //   • foreach / GetEnumerator  → native crash (enumerator value-type marshal fails)
-            //   • Clear() / Add()          → native crash (corrupts native list state)
-            //   • get_Item[i]              → managed ArgumentOutOfRangeException (safe, catchable)
-            //   • RemoveAt(i)              → managed exception (safe, catchable)
-            // Strategy: indexed for loop with try-catch, deferred RemoveAt with try-catch.
-
-            int count;
-            try { count = _detailTextList.Count; }
-            catch { return; }
+            if (_detailTextList.Count == 0) return;
 
             TranslatedStrings.TryGetValue(SKILL_EFFECT_HEADER_ID, out string targetHeader);
             OriginalStrings.TryGetValue(SKILL_EFFECT_HEADER_ID, out string originalHeader);
 
-            var toRemove = new System.Collections.Generic.List<int>();
             bool isEffectGroup = false;
             int sequenceCount = 0;
 
-            for (int i = 0; i < count; i++)
+            // KEY FIX: _detailTextList.ToArray()[i] converts IL2CPP List to managed array
+            // on each iteration (same pattern as PriconneTLFixup). Direct get_Item[i] on
+            // IL2CPP List<ValueTuple<enum,string>> causes ArgumentOutOfRangeException.
+            // RemoveAt(i) + i-- is safe because we re-read via ToArray() next iteration.
+            for (int i = 0; i < _detailTextList.Count; i++)
             {
-                PartsUnitSkillDetailTextPlate.ePlateType plateType;
-                string content;
-                try
-                {
-                    var item = _detailTextList[i];
-                    plateType = item.Item1;
-                    content   = item.Item2;
-                }
-                catch (Exception ex)
-                {
-                    FLog.Debug($"[Skill] get_Item({i}/{count}) failed: {ex.Message} — stopping early");
-                    break; // abort cleanly; toRemove stays as-is
-                }
+                var item = _detailTextList.ToArray()[i];
+                var plateType = item.Item1;
+                var content   = item.Item2;
 
                 sequenceCount++;
 
@@ -142,23 +125,94 @@ public static class TextRegistryPatch
                     var last = StoredSkillTexts[StoredSkillTexts.Count - 1];
                     last.Text += content;
                     StoredSkillTexts[StoredSkillTexts.Count - 1] = last;
-                    toRemove.Add(i);
+
+                    _detailTextList.RemoveAt(i);
+                    i--;
                 }
                 else
                 {
                     StoredSkillTexts.Add(new ProcessedItem(plateType, content, isEffectGroup ? 1 : 0));
                 }
             }
+        }
+    }
 
-            // Deferred reverse removal — RemoveAt is a managed call (safe)
-            for (int j = toRemove.Count - 1; j >= 0; j--)
+    // Postfix on PartsDialogUnitSkillDetail.display — runs AFTER the popup is shown.
+    // Finds the first effect DetailLabel and sets its text to the merged original JP text.
+    // This triggers XUAT's UILabel hook → XUAT finds the merged translation key → translated.
+    [HarmonyPatch(typeof(PartsDialogUnitSkillDetail), "display")]
+    [HarmonyPostfix]
+    [HarmonyWrapSafe]
+    public static void PostfixSkillDisplay(PartsDialogUnitSkillDetail __instance)
+    {
+        if (!ConfigManager.Core.TranslatorIntegration.Value || !ConfigManager.UI.SmartSkillLayout.Value) return;
+        if (!__instance.IsSafe()) return;
+
+        lock (_syncLock)
+        {
+            if (StoredSkillTexts.Count == 0) return;
+
+            var root = ((UnityEngine.Component)__instance).transform
+                .Find("ScrollContent/ScrollView/WrapContent");
+            if (!root.IsSafe()) return;
+
+            var queue = new Queue<ProcessedItem>(StoredSkillTexts);
+            var sb    = new StringBuilder();
+            UILabel firstEffectLabel = null;
+
+            for (int i = 0; i < root.childCount; i++)
             {
-                try { _detailTextList.RemoveAt(toRemove[j]); }
-                catch (Exception ex) { FLog.Debug($"[Skill] RemoveAt({toRemove[j]}) failed: {ex.Message}"); }
+                var plate = root.GetChild(i);
+                if (!plate.IsSafe() || !plate.gameObject.activeSelf) continue;
+
+                var titleT  = plate.Find("TitleLabel");
+                var detailT = plate.Find("DetailLabel");
+
+                bool hasTitle  = titleT.IsSafe()  && titleT.gameObject.activeSelf;
+                bool hasDetail = detailT.IsSafe() && detailT.gameObject.activeSelf;
+
+                if (!hasTitle && !hasDetail) continue;
+                if (queue.Count == 0) break;
+
+                var stored = queue.Dequeue();
+
+                if (hasTitle)
+                {
+                    // Header plate — flush pending effect text first
+                    if (firstEffectLabel != null && sb.Length > 0)
+                    {
+                        firstEffectLabel.text = sb.ToString();
+                        sb.Clear();
+                        firstEffectLabel = null;
+                    }
+                }
+                else if (hasDetail)
+                {
+                    var lbl = detailT.GetComponent<UILabel>();
+                    if (!lbl.IsSafe()) continue;
+
+                    if (stored.GroupId == 1) // effect group
+                    {
+                        if (firstEffectLabel == null)
+                        {
+                            firstEffectLabel = lbl;
+                            sb.Append(stored.Text);
+                        }
+                        else
+                        {
+                            sb.Append(stored.Text);
+                        }
+                    }
+                }
             }
+
+            // Flush last group
+            if (firstEffectLabel != null && sb.Length > 0)
+                firstEffectLabel.text = sb.ToString();
         }
     }
     #endregion
+
 
 
     #region 4. Registry Control API
