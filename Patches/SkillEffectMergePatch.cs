@@ -81,12 +81,14 @@ public static class SkillEffectMergePatch
             : text;
         if (string.IsNullOrWhiteSpace(effectiveText)) return;
         if (!HasJP(effectiveText)) return;
-        if (effectiveText.Contains('\u203b') || effectiveText.Contains('[')) return;
+        if (effectiveText.Contains('\u203b')) return; // skip ※ markers
 
         IntPtr ptr = (ui as Il2CppSystem.Object)?.Pointer ?? IntPtr.Zero;
         if (ptr == IntPtr.Zero) return;
 
-        string flat = effectiveText.Replace("\n", string.Empty).Trim();
+        // Strip NGUI markup tags [b], [-], [FF7C4E] etc. and trim all Unicode whitespace incl \u3000
+        string stripped = StripNgui(effectiveText.Replace("\n", string.Empty));
+        string flat = stripped.Trim('\u3000', '\u00A0', '\u200B', ' ', '\t');
         if (string.IsNullOrWhiteSpace(flat)) return;
 
         // Single-text translation (descriptions + single-effect skills)
@@ -143,6 +145,9 @@ public static class SkillEffectMergePatch
         result = null;
         return false;
     }
+
+    private static readonly Regex _nguiTag = new Regex(@"\[(?:[^\]]{0,20})\]", RegexOptions.Compiled);
+    private static string StripNgui(string s) => _nguiTag.Replace(s, string.Empty);
 
     private static bool HasJP(string s)
     {
