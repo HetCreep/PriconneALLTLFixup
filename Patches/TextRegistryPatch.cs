@@ -95,26 +95,25 @@ public static class TextRegistryPatch
         {
             StoredSkillTexts.Clear();
 
-            // ── Step 1: Snapshot IL2CPP list into managed memory ──────────────────
-            // Indexed access (get_Item) on IL2CPP List<ValueTuple<enum,string>> is
-            // unstable and throws ArgumentOutOfRangeException even when i < Count.
-            // Using foreach (enumerator) is significantly more reliable.
+            // ── Step 1: Snapshot via foreach (stable for IL2CPP List<ValueTuple>) ─
+            // get_Item indexed access is unstable; foreach/enumerator is reliable.
             var snapshot = new System.Collections.Generic.List<(PartsUnitSkillDetailTextPlate.ePlateType type, string text)>();
             foreach (var il2Item in _detailTextList)
                 snapshot.Add((il2Item.Item1, il2Item.Item2));
 
             if (snapshot.Count == 0) return;
 
-            // ── Step 2: Merge consecutive effect lines in managed memory ──────────
+            // ── Step 2: Determine merge groups in managed memory ─────────────────
             TranslatedStrings.TryGetValue(SKILL_EFFECT_HEADER_ID, out string targetHeader);
             OriginalStrings.TryGetValue(SKILL_EFFECT_HEADER_ID, out string originalHeader);
 
-            var merged = new System.Collections.Generic.List<(PartsUnitSkillDetailTextPlate.ePlateType type, string text)>(snapshot.Count);
+            var toRemove = new System.Collections.Generic.List<int>(); // IL2CPP list indices
             bool isEffectGroup = false;
             int sequenceCount = 0;
 
-            foreach (var (plateType, content) in snapshot)
+            for (int i = 0; i < snapshot.Count; i++)
             {
+                var (plateType, content) = snapshot[i];
                 sequenceCount++;
 
                 if (content == "スキル効果" || content == targetHeader || content == originalHeader)
@@ -123,33 +122,30 @@ public static class TextRegistryPatch
                     isEffectGroup = true;
                 }
 
-                if (sequenceCount > 2 && merged.Count > 0)
+                if (sequenceCount > 2 && StoredSkillTexts.Count > 0)
                 {
-                    // Merge into previous effect item (purely in managed memory — no IL2CPP touch)
-                    var last = merged[merged.Count - 1];
-                    merged[merged.Count - 1] = (last.type, last.text + content);
-
                     var lastStored = StoredSkillTexts[StoredSkillTexts.Count - 1];
                     lastStored.Text += content;
                     StoredSkillTexts[StoredSkillTexts.Count - 1] = lastStored;
+                    toRemove.Add(i);
                 }
                 else
                 {
-                    merged.Add((plateType, content));
                     StoredSkillTexts.Add(new ProcessedItem(plateType, content, isEffectGroup ? 1 : 0));
                 }
             }
 
-            // ── Step 3: Rebuild IL2CPP list only if we actually merged anything ──
-            if (merged.Count == snapshot.Count) return; // nothing changed, skip rebuild
+            if (toRemove.Count == 0) return;
 
-            _detailTextList.Clear();
-            foreach (var (type, text) in merged)
-                _detailTextList.Add(new ValueTuple<PartsUnitSkillDetailTextPlate.ePlateType, string>(type, text));
+            // ── Step 3: Deferred RemoveAt in reverse (never Clear/Add — causes native crash) ─
+            for (int j = toRemove.Count - 1; j >= 0; j--)
+            {
+                try { _detailTextList.RemoveAt(toRemove[j]); }
+                catch (Exception ex) { FLog.Debug($"[Skill] RemoveAt({toRemove[j]}) failed: {ex.Message}"); }
+            }
         }
     }
     #endregion
-
 
     #region 4. Registry Control API
     public static void ClearCache()
