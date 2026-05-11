@@ -116,50 +116,7 @@ public static class SkillMergeSetTextPatch
         bool allowStabilizationOnTextComponent,
         bool ignoreComponentState)
     {
-        if (_applying) return;
-        if (!SkillMergeIndex.Done) return;
-        if (SkillMergeIndex.Patterns.Count == 0) return;
-        if (!string.IsNullOrWhiteSpace(text)) return; 
-
-        var lbl = (ui as Il2CppSystem.Object)?.TryCast<UILabel>();
-        if (lbl == null) return;
-
-        string current = lbl.text;
-        if (string.IsNullOrWhiteSpace(current)) return;
-        if (!SkillMergeIndex.HasJP(current)) return;
-
-        string flat = SkillMergeIndex.Flatten(current);
-        if (string.IsNullOrWhiteSpace(flat) || !SkillMergeIndex.HasJP(flat)) return;
-
-        if (SkillMergeIndex.TryTranslate(flat, out string single))
-        {
-            FLog.Debug($"[SkillMerge] ✓ XUAT-Postfix: {flat.Substring(0, Math.Min(30, flat.Length))}");
-            _applying = true;
-            try { lbl.text = single; } finally { _applying = false; }
-            return;
-        }
-
-        long now = DateTime.UtcNow.Ticks;
-        if (now - _lastTick > Window) { _texts.Clear(); _uis.Clear(); }
-        _lastTick = now;
-        if (_uis.Count > 0 && ReferenceEquals(_uis[_uis.Count - 1], lbl)) return;
-        _texts.Add(flat); _uis.Add(lbl);
-        if (_texts.Count < 2) return;
-
-        for (int s = 0; s <= _texts.Count - 2; s++)
-        {
-            string comb = string.Concat(_texts.GetRange(s, _texts.Count - s));
-            if (!SkillMergeIndex.TryTranslate(comb, out string trans)) continue;
-            FLog.Debug($"[SkillMerge] ✓ Combined[{s}]");
-            _applying = true;
-            try
-            {
-                _uis[s].text = trans;
-                for (int i = s + 1; i < _uis.Count; i++) _uis[i].text = string.Empty;
-            }
-            finally { _applying = false; }
-            _texts.Clear(); _uis.Clear();
-            return;
-        }
+        // DISABLED — fires during XUAT init before IL2CPP objects are stable → crash
+        // The U+3000 trim fix in TranslationCorePatch.PrefixSkillTranslationFix handles this
     }
 }
