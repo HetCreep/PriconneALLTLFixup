@@ -415,7 +415,7 @@ public static class TranslationCorePatch
     }
     #endregion
 
-    #region 5. Module D: Skill Effect Translation Fix (ported from PriconneSkillTLFixup by Olegase)
+    #region 5. Module D: Skill Effect Translation Fix
     private static MethodInfo _translateMethod;
     private static MethodInfo TranslateMethod => _translateMethod ??=
         typeof(AutoTranslationPlugin)
@@ -423,18 +423,12 @@ public static class TranslationCorePatch
             .FirstOrDefault(m => m.Name == "TranslateOrQueueWebJobImmediate"
                               && m.GetParameters().Length >= 9);
 
-    // Buffer for combining consecutive effect UILabel texts into one lookup key.
-    // Cleared when > 500ms passes between consecutive JP-text calls.
     private static readonly List<(string flat, object ui)> _effectBuf = new();
     private static long _lastEffectTick;
     private const long EffectWindowTicks = 500 * TimeSpan.TicksPerMillisecond;
+    private static MethodInfo      _tryGetTranslation;
+    private static ConstructorInfo _untranslatedTextCtor;
 
-    /// <summary>
-    /// When XUAT polls a UILabel with empty text (re-translation pass), read the label text
-    /// directly, strip \n, and re-queue. Additionally buffer consecutive JP effect texts:
-    /// if the combined key exists in XUAT's TextCache, translate combined on first label
-    /// and blank subsequent labels — matching the concatenated translation file key format.
-    /// </summary>
     [HarmonyPatch(typeof(AutoTranslationPlugin), "TranslateOrQueueWebJobImmediate")]
     [HarmonyPrefix]
     [HarmonyWrapSafe]
@@ -451,7 +445,6 @@ public static class TranslationCorePatch
         object context)
     {
         if (!string.IsNullOrWhiteSpace(text)) return;
-
         bool isSettingText = info != null &&
             (bool)(info.GetType().GetProperty("IsCurrentlySettingText")?.GetValue(info) ?? false);
         if (isSettingText) return;
@@ -463,83 +456,53 @@ public static class TranslationCorePatch
 
         string flat = componentText.Replace("\n", "");
 
-        // ── Buffer management ────────────────────────────────────────────────────
         long now = DateTime.UtcNow.Ticks;
-        if (now - _lastEffectTick > EffectWindowTicks)
-            _effectBuf.Clear();
+        if (now - _lastEffectTick > EffectWindowTicks) _effectBuf.Clear();
         _lastEffectTick = now;
         _effectBuf.Add((flat, ui));
 
-        // ── Individual re-queue (original OlegZuev behavior) ────────────────────
         TranslateMethod?.Invoke(__instance, new object[]
-        {
-            ui, flat, scope, info,
-            allowStabilizationOnTextComponent, ignoreComponentState,
-            false, false, tc, untranslatedTextContext, context
-        });
+            { ui, flat, scope, info, allowStabilizationOnTextComponent, ignoreComponentState,
+              false, false, tc, untranslatedTextContext, context });
 
-        // ── Combined key lookup (new: multi-effect merge) ────────────────────────
         if (_effectBuf.Count < 2) return;
-
         string combined = string.Concat(_effectBuf.Select(e => e.flat));
-        if (!CombinedKeyExists(tc, combined)) return;
+        if (!TryCombinedKey(tc, combined)) return;
 
-        // Combined key found — queue on first label, blank subsequent labels
         TranslateMethod?.Invoke(__instance, new object[]
-        {
-            _effectBuf[0].ui, combined, scope, info,
-            allowStabilizationOnTextComponent, ignoreComponentState,
-            false, false, tc, untranslatedTextContext, context
-        });
-
+            { _effectBuf[0].ui, combined, scope, info, allowStabilizationOnTextComponent,
+              ignoreComponentState, false, false, tc, untranslatedTextContext, context });
         for (int i = 1; i < _effectBuf.Count; i++)
         {
             var lbl = (_effectBuf[i].ui as Il2CppSystem.Object)?.TryCast<UILabel>();
             if (lbl.IsSafe()) lbl.text = string.Empty;
         }
-
         _effectBuf.Clear();
     }
 
-    // Reflection cache for XUAT internal TextCache API
-    private static MethodInfo      _tryGetTranslation;
-    private static ConstructorInfo _untranslatedTextCtor;
-
-    private static bool CombinedKeyExists(object tc, string combined)
+    private static bool TryCombinedKey(object tc, string combined)
     {
         try
         {
             if (tc == null) return false;
             var tcType = tc.GetType();
-
             if (_untranslatedTextCtor == null)
             {
-                var ut = tcType.Assembly.GetType(
-                    "XUnity.AutoTranslator.Plugin.Core.UntranslatedText");
-                _untranslatedTextCtor = ut?.GetConstructor(new[]
-                {
-                    typeof(string), typeof(bool), typeof(bool),
-                    typeof(bool),   typeof(bool), typeof(bool)
-                });
+                var ut = tcType.Assembly.GetType("XUnity.AutoTranslator.Plugin.Core.UntranslatedText");
+                _untranslatedTextCtor = ut?.GetConstructor(
+                    new[] { typeof(string), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool) });
             }
             if (_untranslatedTextCtor == null) return false;
-
             if (_tryGetTranslation == null)
                 _tryGetTranslation = tcType.GetMethod("TryGetTranslation",
                     BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             if (_tryGetTranslation == null) return false;
-
-            var k1 = _untranslatedTextCtor.Invoke(
-                new object[] { combined, false, false, true, false, false });
-            if ((bool)(_tryGetTranslation.Invoke(tc, new object[] { k1, false, false, -1, null }) ?? false))
-                return true;
-
-            var k2 = _untranslatedTextCtor.Invoke(
-                new object[] { combined, false, false, true, true, true });
+            var k1 = _untranslatedTextCtor.Invoke(new object[] { combined, false, false, true, false, false });
+            if ((bool)(_tryGetTranslation.Invoke(tc, new object[] { k1, false, false, -1, null }) ?? false)) return true;
+            var k2 = _untranslatedTextCtor.Invoke(new object[] { combined, false, false, true, true, true });
             return (bool)(_tryGetTranslation.Invoke(tc, new object[] { k2, false, true, -1, null }) ?? false);
         }
         catch { return false; }
     }
     #endregion
-}
-
+}
