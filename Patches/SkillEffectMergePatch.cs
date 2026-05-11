@@ -1,8 +1,10 @@
+using BepInEx;
 using HarmonyLib;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
+using System.IO;
+using System.Text;
+using System.Text.RegularExpressions;
 using XUnity.AutoTranslator.Plugin.Core;
 
 namespace PriconneALLTLFixup.Patches;
@@ -10,82 +12,109 @@ namespace PriconneALLTLFixup.Patches;
 [HarmonyPatch]
 public static class SkillEffectMergePatch
 {
-    private static MethodInfo _translateMethod;
-    private static MethodInfo TranslateMethod => _translateMethod ??=
-        typeof(AutoTranslationPlugin)
-            .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-            .FirstOrDefault(m => m.Name == "TranslateOrQueueWebJobImmediate"
-                              && m.GetParameters().Length >= 9);
+    // --- Translation index (loaded from files, bypasses XUAT cache) ---
+    private static readonly List<(Regex rx, string tpl)> _patterns = new List<(Regex, string)>();
+    private static bool _loaded;
 
-    private static readonly List<string> _texts  = new List<string>();
-    private static readonly List<object> _uis    = new List<object>();
-    private static readonly List<IntPtr> _ptrs   = new List<IntPtr>();
+    // --- Effect buffer ---
+    private static readonly List<string> _texts = new List<string>();
+    private static readonly List<object> _uis   = new List<object>();
+    private static readonly List<IntPtr> _ptrs  = new List<IntPtr>();
     private static long _lastTick;
-    private static bool _requeuing;
     private static long WindowTicks => 200 * TimeSpan.TicksPerMillisecond;
 
-    // Lazy-init via dynamic discovery (constructor param count varies across XUAT versions)
-    private static MethodInfo      _tryGet;
-    private static ConstructorInfo _utCtor;
-    private static object[]        _tryGetArgs; // pre-built args template
+    // Called once after XUAT loads translations — index all regex patterns from text files
+    [HarmonyPatch(typeof(AutoTranslationPlugin), "LoadTranslations")]
+    [HarmonyPostfix]
+    [HarmonyWrapSafe]
+    public static void PostfixLoadTranslations()
+    {
+        _patterns.Clear();
+        _loaded = false;
+        try
+        {
+            string root = Path.Combine(Paths.BepInExRootPath, "Translation",
+                ConfigManager.Translation.Code.Value, "Text");
+            if (!Directory.Exists(root)) return;
 
+            foreach (string file in Directory.GetFiles(root, "*.txt", SearchOption.AllDirectories))
+            {
+                foreach (string rawLine in File.ReadLines(file, Encoding.UTF8))
+                {
+                    string line = rawLine.Trim();
+                    // Regex key format: r:"^...$"=template  OR  r:^...$=template
+                    if (!line.StartsWith("r:", StringComparison.Ordinal)) continue;
+                    int eq = line.IndexOf('=');
+                    if (eq < 3) continue;
+
+                    string keyPart = line.Substring(2, eq - 2).Trim().Trim('"');
+                    string tpl     = line.Substring(eq + 1);
+
+                    try
+                    {
+                        var rx = new Regex(keyPart,
+                            RegexOptions.Compiled | RegexOptions.Singleline);
+                        _patterns.Add((rx, tpl));
+                    }
+                    catch { /* bad regex — skip */ }
+                }
+            }
+            _loaded = true;
+            FLog.Info($"[SkillMerge] Indexed {_patterns.Count} regex patterns.");
+        }
+        catch (Exception ex) { FLog.Warn($"[SkillMerge] Index failed: {ex.Message}"); }
+    }
+
+    // --- Main hook: buffer effect texts, try combined, apply directly ---
     [HarmonyPatch(typeof(AutoTranslationPlugin), "TranslateOrQueueWebJobImmediate")]
     [HarmonyPostfix]
     [HarmonyWrapSafe]
     public static void PostfixMergeEffects(
-        AutoTranslationPlugin __instance,
-        object ui,
-        string text,
-        int scope,
-        object info,
+        object ui, string text,
         bool allowStabilizationOnTextComponent,
-        bool ignoreComponentState,
-        object tc,
-        object untranslatedTextContext,
-        object context)
+        bool ignoreComponentState)
     {
-        if (_requeuing) return;
+        if (!_loaded) return;
 
         string effectiveText = string.IsNullOrWhiteSpace(text)
             ? (ui as Il2CppSystem.Object)?.TryCast<UILabel>()?.text
             : text;
         if (string.IsNullOrWhiteSpace(effectiveText)) return;
-        if (!HasJapanese(effectiveText)) return;
+        if (!HasJP(effectiveText)) return;
         if (effectiveText.Contains('\u203b') || effectiveText.Contains('[')) return;
 
-        IntPtr uiPtr = (ui as Il2CppSystem.Object)?.Pointer ?? IntPtr.Zero;
-        if (uiPtr == IntPtr.Zero) return;
+        IntPtr ptr = (ui as Il2CppSystem.Object)?.Pointer ?? IntPtr.Zero;
+        if (ptr == IntPtr.Zero) return;
 
         string flat = effectiveText.Replace("\n", string.Empty);
         if (string.IsNullOrWhiteSpace(flat)) return;
 
-        // Re-queue \n-stripped version (fixes auto-wrapped descriptions)
-        if (flat != effectiveText)
+        // Single-text translation (descriptions + single-effect skills)
+        if (TryTranslate(flat, out string single))
         {
-            _requeuing = true;
-            try { TranslateMethod?.Invoke(__instance, new object[] { ui, flat, scope, info, allowStabilizationOnTextComponent, ignoreComponentState, false, false, tc, untranslatedTextContext, context }); }
-            finally { _requeuing = false; }
+            var lbl = (ui as Il2CppSystem.Object)?.TryCast<UILabel>();
+            if (lbl.IsSafe()) lbl.text = single;
+            return;
         }
 
+        // Buffer for multi-effect combining
         long now = DateTime.UtcNow.Ticks;
         if (now - _lastTick > WindowTicks) { _texts.Clear(); _uis.Clear(); _ptrs.Clear(); }
         _lastTick = now;
 
-        // Dedup by IL2CPP pointer — same UILabel polled again → skip
-        if (_ptrs.Count > 0 && _ptrs[_ptrs.Count - 1] == uiPtr) return;
-        _texts.Add(flat); _uis.Add(ui); _ptrs.Add(uiPtr);
+        if (_ptrs.Count > 0 && _ptrs[_ptrs.Count - 1] == ptr) return; // same label polled again
+        _texts.Add(flat); _uis.Add(ui); _ptrs.Add(ptr);
 
         if (_texts.Count < 2) return;
 
-        // Try all suffixes — handles buffer containing description before effects
+        // Try all suffixes (handles description-before-effects)
         for (int start = 0; start <= _texts.Count - 2; start++)
         {
-            string combined = string.Concat(_texts.Skip(start));
-            if (!KeyExists(tc, combined)) continue;
+            string combined = string.Concat(_texts.GetRange(start, _texts.Count - start));
+            if (!TryTranslate(combined, out string trans)) continue;
 
-            _requeuing = true;
-            try { TranslateMethod?.Invoke(__instance, new object[] { _uis[start], combined, scope, info, allowStabilizationOnTextComponent, ignoreComponentState, false, false, tc, untranslatedTextContext, context }); }
-            finally { _requeuing = false; }
+            var first = (_uis[start] as Il2CppSystem.Object)?.TryCast<UILabel>();
+            if (first.IsSafe()) first.text = trans;
 
             for (int i = start + 1; i < _uis.Count; i++)
             {
@@ -97,79 +126,27 @@ public static class SkillEffectMergePatch
         }
     }
 
-    private static bool HasJapanese(string s)
+    private static bool TryTranslate(string text, out string result)
+    {
+        foreach (var (rx, tpl) in _patterns)
+        {
+            var m = rx.Match(text);
+            if (!m.Success) continue;
+            var sb = new StringBuilder(tpl);
+            for (int i = 1; i <= m.Groups.Count - 1; i++)
+                sb.Replace("$" + i, m.Groups[i].Value);
+            result = sb.ToString().Replace("\\n", "\n");
+            return true;
+        }
+        result = null;
+        return false;
+    }
+
+    private static bool HasJP(string s)
     {
         foreach (char c in s)
             if ((c >= '\u3040' && c <= '\u30FF') || (c >= '\u4E00' && c <= '\u9FFF'))
                 return true;
         return false;
-    }
-
-    private static bool KeyExists(object tc, string combined)
-    {
-        try
-        {
-            if (tc == null) return false;
-            var type = tc.GetType();
-
-            // Dynamic ctor discovery — find first ctor whose first param is string
-            if (_utCtor == null)
-            {
-                var ut = type.Assembly.GetType("XUnity.AutoTranslator.Plugin.Core.UntranslatedText");
-                if (ut == null) return false;
-                foreach (var c in ut.GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
-                {
-                    var p = c.GetParameters();
-                    if (p.Length >= 1 && p[0].ParameterType == typeof(string)) { _utCtor = c; break; }
-                }
-            }
-            if (_utCtor == null) return false;
-
-            // Dynamic TryGetTranslation discovery
-            if (_tryGet == null)
-            {
-                _tryGet = type.GetMethod("TryGetTranslation",
-                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            }
-            if (_tryGet == null) return false;
-
-            // Build ctor args: first = combined text, rest = defaults
-            var ctorPs = _utCtor.GetParameters();
-            var ctorArgs = new object[ctorPs.Length];
-            ctorArgs[0] = combined;
-            for (int i = 1; i < ctorPs.Length; i++)
-                ctorArgs[i] = ctorPs[i].ParameterType == typeof(bool) ? (object)false : (object)null;
-
-            // Build TryGetTranslation args: first = UntranslatedText, rest = defaults
-            var tryPs = _tryGet.GetParameters();
-            if (_tryGetArgs == null || _tryGetArgs.Length != tryPs.Length)
-                _tryGetArgs = new object[tryPs.Length];
-            // arg0 = untranslatedText (set below), rest = defaults
-            for (int i = 1; i < tryPs.Length; i++)
-            {
-                var pt = tryPs[i].ParameterType;
-                _tryGetArgs[i] = pt == typeof(bool) ? (object)false
-                               : pt == typeof(int)  ? (object)-1
-                               : null;
-            }
-
-            // Try plain key
-            _tryGetArgs[0] = _utCtor.Invoke(ctorArgs);
-            if ((bool)(_tryGet.Invoke(tc, _tryGetArgs) ?? false)) return true;
-
-            // Try with "allow regex" flags if ctor supports it
-            if (ctorPs.Length >= 5)
-            {
-                ctorArgs[ctorArgs.Length - 2] = true; // allowTranslationOverride-like
-                ctorArgs[ctorArgs.Length - 1] = true; // isForced-like
-                _tryGetArgs[0] = _utCtor.Invoke(ctorArgs);
-                // Set regex flag in TryGetTranslation if it has bool params
-                if (_tryGetArgs.Length >= 3) _tryGetArgs[2] = true;
-                if ((bool)(_tryGet.Invoke(tc, _tryGetArgs) ?? false)) return true;
-            }
-
-            return false;
-        }
-        catch { return false; }
     }
 }
