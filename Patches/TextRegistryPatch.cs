@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using UnityEngine;
 using PriconneALLTLFixup;
 
 namespace PriconneALLTLFixup.Patches;
@@ -15,28 +16,28 @@ public static class TextRegistryPatch
     #region 1. Internal Models & State Management
     private static readonly object _syncLock = new();
 
-    internal static readonly Dictionary<eTextId, string> OriginalStrings = new();
+    internal static readonly Dictionary<eTextId, string> OriginalStrings   = new();
     internal static readonly Dictionary<eTextId, string> TranslatedStrings = new();
-    internal static readonly List<ProcessedItem> StoredSkillTexts = new();
+    internal static readonly List<ProcessedItem> StoredSkillTexts           = new();
 
     private const eTextId SKILL_EFFECT_HEADER_ID = (eTextId)10101004;
 
     internal struct ProcessedItem
     {
         public PartsUnitSkillDetailTextPlate.ePlateType PlateType;
-        public int GroupId;
+        public int    GroupId;
         public string Text;
 
         public ProcessedItem(PartsUnitSkillDetailTextPlate.ePlateType plateType, string text, int groupId)
         {
             PlateType = plateType;
-            Text = text;
-            GroupId = groupId;
+            Text      = text;
+            GroupId   = groupId;
         }
     }
     #endregion
 
-    #region 2. Module A: Global Text Registry (The Memory Injector)
+    #region 2. Module A: Global Text Registry
     [HarmonyPatch(typeof(ConstTextData), nameof(ConstTextData.CreateInstanceAndLoadInitialize))]
     [HarmonyPostfix]
     [HarmonyWrapSafe]
@@ -44,7 +45,6 @@ public static class TextRegistryPatch
     {
         string path = Path.Combine(Paths.BepInExRootPath, "Translation",
                                    ConfigManager.Translation.Code.Value, "Other", "text_id.txt");
-
         if (!File.Exists(path)) return;
 
         var instance = Singleton<ConstTextData>.Instance;
@@ -67,10 +67,8 @@ public static class TextRegistryPatch
                         if (dict.ContainsKey(textId))
                         {
                             string val = line.Substring(splitIdx + 1).Sanitize();
-
-                            OriginalStrings[textId] = dict[textId];
+                            OriginalStrings[textId]   = dict[textId];
                             TranslatedStrings[textId] = val;
-
                             dict[textId] = val;
                         }
                     }
@@ -82,64 +80,27 @@ public static class TextRegistryPatch
     }
     #endregion
 
-    #region 3. Module B: Smart Skill Layout (Contextual Refactoring)
+    #region 3. Module B: Smart Skill Layout
+    // PrefixSkillInit DISABLED:
+    // IL2CPP List<ValueTuple<enum,string>> — every access pattern crashes natively:
+    //   foreach/ToArray → native crash  |  get_Item[i] → managed exception
+    //   Clear/Add       → native crash  |  RemoveAt alone → managed exception (safe)
+    // All skill merging is handled by PostfixSkillDisplay (pure Unity, safe).
     [HarmonyPatch(typeof(PartsUnitSkillDetailTextController), nameof(PartsUnitSkillDetailTextController.Initialize))]
     [HarmonyPrefix]
     [HarmonyWrapSafe]
-    public static void PrefixSkillInit(Il2CppSystem.Collections.Generic.List<ValueTuple<PartsUnitSkillDetailTextPlate.ePlateType, string>> _detailTextList)
-    {
-        if (!ConfigManager.Core.TranslatorIntegration.Value || !ConfigManager.UI.SmartSkillLayout.Value) return;
-        if (!_detailTextList.IsSafe()) return;
+    public static void PrefixSkillInit(
+        Il2CppSystem.Collections.Generic.List<ValueTuple<PartsUnitSkillDetailTextPlate.ePlateType, string>> _detailTextList)
+        => _ = _detailTextList; // no-op: do not touch IL2CPP list
 
-        lock (_syncLock)
-        {
-            StoredSkillTexts.Clear();
-            if (_detailTextList.Count == 0) return;
-
-            TranslatedStrings.TryGetValue(SKILL_EFFECT_HEADER_ID, out string targetHeader);
-            OriginalStrings.TryGetValue(SKILL_EFFECT_HEADER_ID, out string originalHeader);
-
-            bool isEffectGroup = false;
-            int sequenceCount = 0;
-
-            // KEY FIX: _detailTextList.ToArray()[i] converts IL2CPP List to managed array
-            // on each iteration (same pattern as PriconneTLFixup). Direct get_Item[i] on
-            // IL2CPP List<ValueTuple<enum,string>> causes ArgumentOutOfRangeException.
-            // RemoveAt(i) + i-- is safe because we re-read via ToArray() next iteration.
-            for (int i = 0; i < _detailTextList.Count; i++)
-            {
-                var item = _detailTextList.ToArray()[i];
-                var plateType = item.Item1;
-                var content   = item.Item2;
-
-                sequenceCount++;
-
-                if (content == "スキル効果" || content == targetHeader || content == originalHeader)
-                {
-                    sequenceCount = 1;
-                    isEffectGroup = true;
-                }
-
-                if (sequenceCount > 2 && StoredSkillTexts.Count > 0)
-                {
-                    var last = StoredSkillTexts[StoredSkillTexts.Count - 1];
-                    last.Text += content;
-                    StoredSkillTexts[StoredSkillTexts.Count - 1] = last;
-
-                    _detailTextList.RemoveAt(i);
-                    i--;
-                }
-                else
-                {
-                    StoredSkillTexts.Add(new ProcessedItem(plateType, content, isEffectGroup ? 1 : 0));
-                }
-            }
-        }
-    }
-
-    // Postfix on PartsDialogUnitSkillDetail.display — runs AFTER the popup is shown.
-    // Finds the first effect DetailLabel and sets its text to the merged original JP text.
-    // This triggers XUAT's UILabel hook → XUAT finds the merged translation key → translated.
+    /// <summary>
+    /// Ported from PriconneTLFixup's SkillPopupPatch.
+    /// Runs after PartsDialogUnitSkillDetail.display renders all plates.
+    /// Reads UILabel.text from Unity GameObjects (no IL2CPP List access).
+    /// Merges consecutive effect-section DetailLabel texts into the first plate,
+    /// hides extra plates, then sets the merged JP text on the first label so
+    /// XUAT re-translates it using the merged key in the translation files.
+    /// </summary>
     [HarmonyPatch(typeof(PartsDialogUnitSkillDetail), "display")]
     [HarmonyPostfix]
     [HarmonyWrapSafe]
@@ -148,72 +109,73 @@ public static class TextRegistryPatch
         if (!ConfigManager.Core.TranslatorIntegration.Value || !ConfigManager.UI.SmartSkillLayout.Value) return;
         if (!__instance.IsSafe()) return;
 
-        lock (_syncLock)
+        var root = __instance.transform.Find("ScrollContent/ScrollView/WrapContent");
+        if (!root.IsSafe()) return;
+
+        bool    inEffectSection  = false;
+        UILabel firstEffectLabel = null;
+        var     sb               = new StringBuilder();
+
+        for (int i = 0; i < root.childCount; i++)
         {
-            if (StoredSkillTexts.Count == 0) return;
+            var plate = root.GetChild(i);
+            if (!plate.IsSafe()) continue;
 
-            var root = ((UnityEngine.Component)__instance).transform
-                .Find("ScrollContent/ScrollView/WrapContent");
-            if (!root.IsSafe()) return;
+            var titleT  = plate.Find("TitleLabel");
+            var detailT = plate.Find("DetailLabel");
 
-            var queue = new Queue<ProcessedItem>(StoredSkillTexts);
-            var sb    = new StringBuilder();
-            UILabel firstEffectLabel = null;
+            bool hasTitle  = titleT.IsSafe()  && titleT.gameObject.activeSelf;
+            bool hasDetail = detailT.IsSafe() && detailT.gameObject.activeSelf;
 
-            for (int i = 0; i < root.childCount; i++)
+            if (!hasTitle && !hasDetail) continue;
+
+            if (hasTitle)
             {
-                var plate = root.GetChild(i);
-                if (!plate.IsSafe() || !plate.gameObject.activeSelf) continue;
-
-                var titleT  = plate.Find("TitleLabel");
-                var detailT = plate.Find("DetailLabel");
-
-                bool hasTitle  = titleT.IsSafe()  && titleT.gameObject.activeSelf;
-                bool hasDetail = detailT.IsSafe() && detailT.gameObject.activeSelf;
-
-                if (!hasTitle && !hasDetail) continue;
-                if (queue.Count == 0) break;
-
-                var stored = queue.Dequeue();
-
-                if (hasTitle)
+                // Flush previous effect group before entering new section
+                if (inEffectSection && firstEffectLabel.IsSafe() && sb.Length > 0)
                 {
-                    // Header plate — flush pending effect text first
-                    if (firstEffectLabel != null && sb.Length > 0)
-                    {
-                        firstEffectLabel.text = sb.ToString();
-                        sb.Clear();
-                        firstEffectLabel = null;
-                    }
+                    firstEffectLabel.text = sb.ToString();
+                    sb.Clear();
+                    firstEffectLabel = null;
                 }
-                else if (hasDetail)
-                {
-                    var lbl = detailT.GetComponent<UILabel>();
-                    if (!lbl.IsSafe()) continue;
 
-                    if (stored.GroupId == 1) // effect group
-                    {
-                        if (firstEffectLabel == null)
-                        {
-                            firstEffectLabel = lbl;
-                            sb.Append(stored.Text);
-                        }
-                        else
-                        {
-                            sb.Append(stored.Text);
-                        }
-                    }
+                inEffectSection = false;
+
+                // Detect "Skill effect" section by TitleLabel text
+                var hdr = titleT.GetComponent<UILabel>();
+                if (hdr.IsSafe())
+                {
+                    var txt = hdr.text ?? string.Empty;
+                    if (txt == "スキル効果"
+                        || txt.IndexOf("Skill effect", StringComparison.OrdinalIgnoreCase) >= 0)
+                        inEffectSection = true;
                 }
             }
+            else if (hasDetail && inEffectSection)
+            {
+                var lbl = detailT.GetComponent<UILabel>();
+                if (!lbl.IsSafe()) continue;
 
-            // Flush last group
-            if (firstEffectLabel != null && sb.Length > 0)
-                firstEffectLabel.text = sb.ToString();
+                if (firstEffectLabel == null)
+                {
+                    // First effect plate — accumulate here
+                    firstEffectLabel = lbl;
+                    sb.Append(lbl.text ?? string.Empty);
+                }
+                else
+                {
+                    // Subsequent effect plate — merge text and hide
+                    sb.Append(lbl.text ?? string.Empty);
+                    plate.gameObject.SetActive(false);
+                }
+            }
         }
+
+        // Flush final group — setting text triggers XUAT to re-translate with merged key
+        if (inEffectSection && firstEffectLabel.IsSafe() && sb.Length > 0)
+            firstEffectLabel.text = sb.ToString();
     }
     #endregion
-
-
 
     #region 4. Registry Control API
     public static void ClearCache()
