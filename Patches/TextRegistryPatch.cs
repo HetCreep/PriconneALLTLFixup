@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using UnityEngine;
 using PriconneALLTLFixup;
 
 namespace PriconneALLTLFixup.Patches;
@@ -80,79 +79,13 @@ public static class TextRegistryPatch
     }
     #endregion
 
-    #region 3. Module B: Skill Layout — Merge effect UILabels via FindObjectsOfType
-    // PrefixSkillInit: no-op — all IL2CPP List<ValueTuple> access crashes natively
+    #region 3. Module B: Skill Init — intentional no-op (IL2CPP List unsafe)
     [HarmonyPatch(typeof(PartsUnitSkillDetailTextController), nameof(PartsUnitSkillDetailTextController.Initialize))]
     [HarmonyPrefix]
     [HarmonyWrapSafe]
     public static void PrefixSkillInit(
         Il2CppSystem.Collections.Generic.List<ValueTuple<PartsUnitSkillDetailTextPlate.ePlateType, string>> _detailTextList)
         => _ = _detailTextList;
-
-    /// <summary>
-    /// Postfix on Initialize — uses FindObjectsOfType&lt;PartsUnitSkillDetailTextPlate&gt;()
-    /// to avoid accessing controller.transform (which crashes natively).
-    /// Plates ARE MonoBehaviours with safe .transform access.
-    /// Merges consecutive effect-section DetailLabel texts, sets combined JP text on first
-    /// label → XUAT translates using the concatenated key from the translation files.
-    /// </summary>
-    [HarmonyPatch(typeof(PartsUnitSkillDetailTextController), nameof(PartsUnitSkillDetailTextController.Initialize))]
-    [HarmonyPostfix]
-    [HarmonyWrapSafe]
-    public static void PostfixSkillControllerInit(PartsUnitSkillDetailTextController __instance)
-    {
-        if (!ConfigManager.Core.TranslatorIntegration.Value || !ConfigManager.UI.SmartSkillLayout.Value) return;
-
-        TranslatedStrings.TryGetValue(SKILL_EFFECT_HEADER_ID, out string effectHeaderTL);
-
-        var plates = UnityEngine.Object.FindObjectsOfType<PartsUnitSkillDetailTextPlate>();
-        if (plates == null || plates.Length == 0) return;
-
-        bool    inEffect         = false;
-        UILabel firstEffectLabel = null;
-        var     sb               = new StringBuilder();
-
-        foreach (var plate in plates)
-        {
-            if (!plate.IsSafe()) continue;
-
-            var titleT  = plate.transform.Find("TitleLabel");
-            var detailT = plate.transform.Find("DetailLabel");
-
-            bool hasTitle  = titleT.IsSafe()  && titleT.gameObject.activeSelf;
-            bool hasDetail = detailT.IsSafe() && detailT.gameObject.activeSelf;
-
-            if (!hasTitle && !hasDetail) continue;
-
-            if (hasTitle)
-            {
-                if (inEffect && firstEffectLabel.IsSafe() && sb.Length > 0)
-                { firstEffectLabel.text = sb.ToString(); sb.Clear(); firstEffectLabel = null; }
-
-                inEffect = false;
-                var hdr  = titleT.GetComponent<UILabel>();
-                if (hdr.IsSafe())
-                {
-                    var t = hdr.text ?? string.Empty;
-                    if (t == "スキル効果" || t == effectHeaderTL
-                        || t.IndexOf("Skill effect", StringComparison.OrdinalIgnoreCase) >= 0)
-                        inEffect = true;
-                }
-            }
-            else if (hasDetail && inEffect)
-            {
-                var lbl = detailT.GetComponent<UILabel>();
-                if (!lbl.IsSafe()) continue;
-                string txt = (lbl.text ?? string.Empty).Replace("\n", "");
-
-                if (firstEffectLabel == null) { firstEffectLabel = lbl; sb.Append(txt); }
-                else                          { sb.Append(txt); lbl.text = string.Empty; }
-            }
-        }
-
-        if (inEffect && firstEffectLabel.IsSafe() && sb.Length > 0)
-            firstEffectLabel.text = sb.ToString();
-    }
     #endregion
 
     #region 4. Registry Control API
