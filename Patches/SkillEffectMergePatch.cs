@@ -7,11 +7,6 @@ using XUnity.AutoTranslator.Plugin.Core;
 
 namespace PriconneALLTLFixup.Patches;
 
-/// <summary>
-/// Intercepts TranslateOrQueueWebJobImmediate for ALL calls (not just empty-text polls).
-/// For each JP text: strips \n and re-queues (fixes auto-wrapped descriptions).
-/// Also buffers consecutive short JP effect texts and tries a combined key lookup.
-/// </summary>
 [HarmonyPatch]
 public static class SkillEffectMergePatch
 {
@@ -22,13 +17,12 @@ public static class SkillEffectMergePatch
             .FirstOrDefault(m => m.Name == "TranslateOrQueueWebJobImmediate"
                               && m.GetParameters().Length >= 9);
 
+    // Parallel lists — avoids ValueTuple
     private static readonly List<string> _texts = new List<string>();
     private static readonly List<object> _uis   = new List<object>();
-    private static long   _lastTick;
-    private static bool   _requeuing;
-
-    // Effect window: effects set within this window are considered part of same skill
-    private static long WindowTicks => 100 * TimeSpan.TicksPerMillisecond;
+    private static long _lastTick;
+    private static bool _requeuing;
+    private static long WindowTicks => 200 * TimeSpan.TicksPerMillisecond;
 
     private static MethodInfo      _tryGet;
     private static ConstructorInfo _utCtor;
@@ -48,9 +42,9 @@ public static class SkillEffectMergePatch
         object untranslatedTextContext,
         object context)
     {
-        if (_requeuing) return; // prevent recursion from our own re-queues
+        if (_requeuing) return;
 
-        // Determine actual text: from param if non-empty, else from UILabel component
+        // Effective text: from param or from UILabel (for empty-text polls)
         string effectiveText = string.IsNullOrWhiteSpace(text)
             ? (ui as Il2CppSystem.Object)?.TryCast<UILabel>()?.text
             : text;
@@ -60,9 +54,11 @@ public static class SkillEffectMergePatch
         if (effectiveText.Contains('\u203b') || effectiveText.Contains('[')) return;
 
         string flat = effectiveText.Replace("\n", string.Empty);
+        if (string.IsNullOrWhiteSpace(flat)) return;
 
-        // If text had \n (auto-wrapped), re-queue flat version so XUAT finds the key
-        if (flat != effectiveText && flat.Length > 0)
+        // If text had \n (auto-wrapped), re-queue the flat version for XUAT lookup
+        // Do NOT return — still add flat to buffer for combining
+        if (flat != effectiveText)
         {
             _requeuing = true;
             try
@@ -75,10 +71,9 @@ public static class SkillEffectMergePatch
                 });
             }
             finally { _requeuing = false; }
-            return; // description handled — don't add to effect buffer
         }
 
-        // No \n → likely a skill effect line. Buffer for combining.
+        // Buffer management — reset on timeout
         long now = DateTime.UtcNow.Ticks;
         if (now - _lastTick > WindowTicks)
         {
@@ -87,39 +82,46 @@ public static class SkillEffectMergePatch
         }
         _lastTick = now;
 
-        // Dedup: avoid adding same text twice from repeated XUAT polls
+        // Dedup repeated polls of the same UILabel
         if (_texts.Count == 0 || _texts[_texts.Count - 1] != flat)
         {
             _texts.Add(flat);
             _uis.Add(ui);
         }
 
+        // Need at least 2 texts before trying combined
         if (_texts.Count < 2) return;
 
-        string combined = string.Concat(_texts);
-        if (!KeyExists(tc, combined)) return;
-
-        // Combined key found — translate on first label, blank subsequent
-        _requeuing = true;
-        try
+        // Try all suffixes of the buffer — handles description-before-effects case:
+        // buffer = [desc, eff1, eff2, eff3], try eff1+eff2+eff3, then eff2+eff3, etc.
+        for (int start = 0; start <= _texts.Count - 2; start++)
         {
-            TranslateMethod?.Invoke(__instance, new object[]
+            string combined = string.Concat(_texts.Skip(start));
+            if (!KeyExists(tc, combined)) continue;
+
+            // Combined key found at this suffix — translate first label, blank rest
+            _requeuing = true;
+            try
             {
-                _uis[0], combined, scope, info,
-                allowStabilizationOnTextComponent, ignoreComponentState,
-                false, false, tc, untranslatedTextContext, context
-            });
-        }
-        finally { _requeuing = false; }
+                TranslateMethod?.Invoke(__instance, new object[]
+                {
+                    _uis[start], combined, scope, info,
+                    allowStabilizationOnTextComponent, ignoreComponentState,
+                    false, false, tc, untranslatedTextContext, context
+                });
+            }
+            finally { _requeuing = false; }
 
-        for (int i = 1; i < _uis.Count; i++)
-        {
-            var lbl = (_uis[i] as Il2CppSystem.Object)?.TryCast<UILabel>();
-            if (lbl.IsSafe()) lbl.text = string.Empty;
-        }
+            for (int i = start + 1; i < _uis.Count; i++)
+            {
+                var lbl = (_uis[i] as Il2CppSystem.Object)?.TryCast<UILabel>();
+                if (lbl.IsSafe()) lbl.text = string.Empty;
+            }
 
-        _texts.Clear();
-        _uis.Clear();
+            _texts.Clear();
+            _uis.Clear();
+            return;
+        }
     }
 
     private static bool HasJapanese(string s)
@@ -151,10 +153,11 @@ public static class SkillEffectMergePatch
                     BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             if (_tryGet == null) return false;
 
+            // Plain key
             var k1 = _utCtor.Invoke(new object[] { combined, false, false, true, false, false });
             if ((bool)(_tryGet.Invoke(tc, new object[] { k1, false, false, -1, null }) ?? false)) return true;
 
-            // Try with regex enabled (for patterns like (\d+))
+            // Regex-capable key (for patterns like (\d+))
             var k2 = _utCtor.Invoke(new object[] { combined, false, false, true, true, true });
             return (bool)(_tryGet.Invoke(tc, new object[] { k2, false, true, -1, null }) ?? false);
         }
