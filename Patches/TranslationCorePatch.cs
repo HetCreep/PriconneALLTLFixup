@@ -415,51 +415,53 @@ public static class TranslationCorePatch
     }
     #endregion
 
-    #region 5. Module D: Skill Effect Newline Fix (ported from PriconneSkillTLFixup by Olegase)
+    #region 5. Module D: Skill Effect Translation Fix (ported from PriconneSkillTLFixup by Olegase)
+    private static MethodInfo _translateMethod;
+    private static MethodInfo TranslateMethod => _translateMethod ??=
+        typeof(AutoTranslationPlugin)
+            .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            .FirstOrDefault(m => m.Name == "TranslateOrQueueWebJobImmediate"
+                              && m.GetParameters().Length >= 9);
+
     /// <summary>
-    /// Patches XUAT's TranslateOrQueueWebJobImmediate. When called with empty text (re-translation
-    /// pass), reads the UILabel's current text. If it contains \n (game joins multi-line skill
-    /// effects with \n), strips them and retries — translation file keys are flat (no \n).
-    /// Uses object params + reflection for XUAT-internal types unavailable in our assembly.
+    /// When XUAT polls a UILabel with empty text (re-translation pass), native game code
+    /// has already set the label text before XUAT could intercept. Read the label directly,
+    /// strip any \n (multi-line effects joined by game), and re-queue for XUAT's regex lookup.
+    /// Works for both single-effect (no \n) and multi-effect (\n-joined) skill labels.
     /// </summary>
     [HarmonyPatch(typeof(AutoTranslationPlugin), "TranslateOrQueueWebJobImmediate")]
     [HarmonyPrefix]
     [HarmonyWrapSafe]
-    public static void PrefixSkillNewlineFix(
+    public static void PrefixSkillTranslationFix(
         AutoTranslationPlugin __instance,
         object ui,
         string text,
         int scope,
-        object info,                    // TextTranslationInfo — internal, use object
+        object info,
         bool allowStabilizationOnTextComponent,
         bool ignoreComponentState,
-        object tc,                      // IReadOnlyTextTranslationCache — internal
-        object untranslatedTextContext, // UntranslatedTextInfo — internal
-        object context)                 // ParserTranslationContext — internal
+        object tc,
+        object untranslatedTextContext,
+        object context)
     {
-        // Guard: only act on the empty-text re-translation pass
+        if (!string.IsNullOrWhiteSpace(text)) return;
         bool isSettingText = info != null &&
             (bool)(info.GetType().GetProperty("IsCurrentlySettingText")?.GetValue(info) ?? false);
-        if (!string.IsNullOrWhiteSpace(text) || isSettingText) return;
+        if (isSettingText) return;
 
-        // Read UILabel text directly (avoids inaccessible ComponentExtensions overloads)
-        var il2obj = ui as Il2CppSystem.Object;
-        var label  = il2obj?.TryCast<UILabel>();
-        string componentText = label?.text;
+        string componentText = (ui as Il2CppSystem.Object)?.TryCast<UILabel>()?.text;
         if (string.IsNullOrWhiteSpace(componentText)) return;
-        if (!componentText.Contains('\n') || IsNonJapaneseScript(componentText)) return;
+        if (IsNonJapaneseScript(componentText)) return;        // already translated
+        if (componentText.Contains('※') || componentText.Contains('[')) return;
 
         string flat = componentText.Replace("\n", "");
 
-        // Recursive call via reflection so XUAT finds the flat key in the translation cache
-        typeof(AutoTranslationPlugin)
-            .GetMethod("TranslateOrQueueWebJobImmediate")?
-            .Invoke(__instance, new object[]
-            {
-                ui, flat, scope, info,
-                allowStabilizationOnTextComponent, ignoreComponentState,
-                false, false, tc, untranslatedTextContext, context
-            });
+        TranslateMethod?.Invoke(__instance, new object[]
+        {
+            ui, flat, scope, info,
+            allowStabilizationOnTextComponent, ignoreComponentState,
+            false, false, tc, untranslatedTextContext, context
+        });
     }
     #endregion
 }
