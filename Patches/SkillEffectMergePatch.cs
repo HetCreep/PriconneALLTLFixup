@@ -28,14 +28,21 @@ public static class SkillEffectMergePatch
     private static readonly Regex _nguiTag =
         new Regex(@"\[(?:[^\]]{0,20})\]", RegexOptions.Compiled);
 
-    // Build index after XUAT loads its translations
+    // Fires at startup (confirmed working in TextRegistryPatch)
+    [HarmonyPatch(typeof(ConstTextData), nameof(ConstTextData.CreateInstanceAndLoadInitialize))]
+    [HarmonyPostfix]
+    [HarmonyWrapSafe]
+    public static void PostfixConstTextInit() => BuildIndex();
+
+    // Also fires when XUAT reloads translations
     [HarmonyPatch(typeof(AutoTranslationPlugin), "LoadTranslations")]
     [HarmonyPostfix]
     [HarmonyWrapSafe]
     public static void PostfixLoadTranslations() => BuildIndex();
 
-    private static void BuildIndex()
+    public static void BuildIndex()
     {
+        FLog.Info("[SkillMerge] BuildIndex called from: " + System.Environment.StackTrace.Substring(0, Math.Min(80, System.Environment.StackTrace.Length)));
         _patterns.Clear();
         try
         {
