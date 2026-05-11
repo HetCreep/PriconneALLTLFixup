@@ -100,6 +100,7 @@ public static class SkillMergeIndexPatch
 public static class SkillMergeSetTextPatch
 {
     private static bool _setting;
+    private static bool _firstCall = true;
 
     private static readonly List<string>   _texts = new();
     private static readonly List<UILabel>  _uis   = new();
@@ -110,6 +111,7 @@ public static class SkillMergeSetTextPatch
     [HarmonyPostfix][HarmonyWrapSafe]
     public static void OnSetText(UILabel __instance, string value)
     {
+        if (_firstCall) { FLog.Info("[SkillMerge] UILabel.set_text patch is ACTIVE"); _firstCall = false; }
         if (_setting) return;
         if (!SkillMergeIndex.Done) SkillMergeIndex.Build();
         if (SkillMergeIndex.Patterns.Count == 0) return;
