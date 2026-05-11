@@ -86,12 +86,13 @@ public static class SkillEffectMergePatch
         IntPtr ptr = (ui as Il2CppSystem.Object)?.Pointer ?? IntPtr.Zero;
         if (ptr == IntPtr.Zero) return;
 
-        string flat = effectiveText.Replace("\n", string.Empty);
+        string flat = effectiveText.Replace("\n", string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(flat)) return;
 
         // Single-text translation (descriptions + single-effect skills)
         if (TryTranslate(flat, out string single))
         {
+            FLog.Debug($"[SkillMerge] Single match: {flat.Substring(0, Math.Min(30, flat.Length))}");
             var lbl = (ui as Il2CppSystem.Object)?.TryCast<UILabel>();
             if (lbl.IsSafe()) lbl.text = single;
             return;
@@ -113,6 +114,7 @@ public static class SkillEffectMergePatch
             string combined = string.Concat(_texts.GetRange(start, _texts.Count - start));
             if (!TryTranslate(combined, out string trans)) continue;
 
+            FLog.Debug($"[SkillMerge] Combined match start={start}: {combined.Substring(0, Math.Min(40, combined.Length))}");
             var first = (_uis[start] as Il2CppSystem.Object)?.TryCast<UILabel>();
             if (first.IsSafe()) first.text = trans;
 
