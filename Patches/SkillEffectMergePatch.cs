@@ -9,22 +9,26 @@ using XUnity.AutoTranslator.Plugin.Core;
 
 namespace PriconneALLTLFixup.Patches;
 
+/// <summary>
+/// Hooks UILabel.set_text directly (bypasses XUAT's TextManipulator limitation for UILabel)
+/// to apply skill effect translations via regex patterns loaded from XUAT text files.
+/// </summary>
 [HarmonyPatch]
 public static class SkillEffectMergePatch
 {
     private static readonly List<(Regex rx, string tpl)> _patterns = new List<(Regex, string)>();
     private static bool _indexDone;
+    private static bool _setting; // recursion guard for set_text
 
     private static readonly List<string> _texts = new List<string>();
-    private static readonly List<object> _uis   = new List<object>();
-    private static readonly List<IntPtr> _ptrs  = new List<IntPtr>();
+    private static readonly List<UILabel> _uis   = new List<UILabel>();
     private static long _lastTick;
     private static long WindowTicks => 200 * TimeSpan.TicksPerMillisecond;
 
     private static readonly Regex _nguiTag =
         new Regex(@"\[(?:[^\]]{0,20})\]", RegexOptions.Compiled);
 
-    // Trigger index build after XUAT loads translations
+    // Build index after XUAT loads its translations
     [HarmonyPatch(typeof(AutoTranslationPlugin), "LoadTranslations")]
     [HarmonyPostfix]
     [HarmonyWrapSafe]
@@ -35,86 +39,75 @@ public static class SkillEffectMergePatch
         _patterns.Clear();
         try
         {
-            string translationRoot = Path.Combine(Paths.BepInExRootPath, "Translation");
-            if (!Directory.Exists(translationRoot))
+            string root = Path.Combine(Paths.BepInExRootPath, "Translation");
+            if (!Directory.Exists(root)) { FLog.Warn("[SkillMerge] Translation dir not found"); return; }
+            foreach (string lang in Directory.GetDirectories(root))
             {
-                FLog.Warn("[SkillMerge] Translation root not found: " + translationRoot);
-                return;
+                string txt = Path.Combine(lang, "Text");
+                if (!Directory.Exists(txt)) continue;
+                foreach (string f in Directory.GetFiles(txt, "*.txt", SearchOption.AllDirectories))
+                    try { IndexFile(f); } catch { }
             }
-
-            // Scan ALL language subdirectories (en, th, etc.)
-            foreach (string langDir in Directory.GetDirectories(translationRoot))
-            {
-                string textDir = Path.Combine(langDir, "Text");
-                if (!Directory.Exists(textDir)) continue;
-
-                foreach (string file in Directory.GetFiles(textDir, "*.txt", SearchOption.AllDirectories))
-                {
-                    try { IndexFile(file); }
-                    catch { /* bad file — skip */ }
-                }
-            }
-            FLog.Info($"[SkillMerge] Indexed {_patterns.Count} regex patterns from {translationRoot}");
         }
-        catch (Exception ex) { FLog.Warn("[SkillMerge] Index error: " + ex.Message); }
-        finally { _indexDone = true; }
+        catch (Exception ex) { FLog.Warn("[SkillMerge] " + ex.Message); }
+        finally
+        {
+            _indexDone = true;
+            FLog.Info($"[SkillMerge] Indexed {_patterns.Count} regex patterns");
+        }
     }
 
     private static void IndexFile(string file)
     {
-        foreach (string rawLine in File.ReadLines(file, Encoding.UTF8))
+        foreach (string raw in File.ReadLines(file, Encoding.UTF8))
         {
-            string line = rawLine.Trim();
+            string line = raw.Trim();
             if (!line.StartsWith("r:", StringComparison.Ordinal)) continue;
-            int eq = line.IndexOf('=');
-            if (eq < 3) continue;
-            string keyPart = line.Substring(2, eq - 2).Trim().Trim('"');
-            string tpl     = line.Substring(eq + 1);
-            try { _patterns.Add((new Regex(keyPart, RegexOptions.Compiled | RegexOptions.Singleline), tpl)); }
+            int eq = line.IndexOf('='); if (eq < 3) continue;
+            string key = line.Substring(2, eq - 2).Trim().Trim('"');
+            string tpl = line.Substring(eq + 1);
+            try { _patterns.Add((new Regex(key, RegexOptions.Compiled | RegexOptions.Singleline), tpl)); }
             catch { }
         }
     }
 
-    [HarmonyPatch(typeof(AutoTranslationPlugin), "TranslateOrQueueWebJobImmediate")]
+    // Hook UILabel.set_text — fires every time any UILabel's text is changed by game code
+    [HarmonyPatch(typeof(UILabel), "set_text")]
     [HarmonyPostfix]
     [HarmonyWrapSafe]
-    public static void PostfixMergeEffects(object ui, string text)
+    public static void PostfixSetText(UILabel __instance, string value)
     {
-        // Lazy index on first call in case LoadTranslations fired before our patch registered
+        if (_setting) return;
         if (!_indexDone) BuildIndex();
         if (_patterns.Count == 0) return;
+        if (string.IsNullOrWhiteSpace(value)) return;
+        if (!HasJP(value)) return;
+        if (value.Contains('\u203b')) return;
 
-        string effectiveText = string.IsNullOrWhiteSpace(text)
-            ? (ui as Il2CppSystem.Object)?.TryCast<UILabel>()?.text
-            : text;
-        if (string.IsNullOrWhiteSpace(effectiveText)) return;
-        if (!HasJP(effectiveText)) return;
-        if (effectiveText.Contains('\u203b')) return;
-
-        IntPtr ptr = (ui as Il2CppSystem.Object)?.Pointer ?? IntPtr.Zero;
-        if (ptr == IntPtr.Zero) return;
-
-        // Strip NGUI markup, collapse newlines, trim all Unicode whitespace incl U+3000
-        string flat = _nguiTag.Replace(effectiveText.Replace("\n", string.Empty), string.Empty)
+        // Strip NGUI tags, collapse \n, trim all whitespace including U+3000
+        string flat = _nguiTag.Replace(value.Replace("\n", string.Empty), string.Empty)
                                .Trim('\u3000', '\u00A0', '\u200B', ' ', '\t');
         if (string.IsNullOrWhiteSpace(flat) || !HasJP(flat)) return;
 
-        // Single-text: try direct regex match first
+        // Single match
         if (TryTranslate(flat, out string single))
         {
             FLog.Debug($"[SkillMerge] ✓ Single: {flat.Substring(0, Math.Min(30, flat.Length))}");
-            var lbl = (ui as Il2CppSystem.Object)?.TryCast<UILabel>();
-            if (lbl.IsSafe()) lbl.text = single;
+            _setting = true;
+            try { __instance.text = single; }
+            finally { _setting = false; }
             return;
         }
 
-        // Buffer for combined multi-effect key
+        // Buffer for combined key
         long now = DateTime.UtcNow.Ticks;
-        if (now - _lastTick > WindowTicks) { _texts.Clear(); _uis.Clear(); _ptrs.Clear(); }
+        if (now - _lastTick > WindowTicks) { _texts.Clear(); _uis.Clear(); }
         _lastTick = now;
 
-        if (_ptrs.Count > 0 && _ptrs[_ptrs.Count - 1] == ptr) return;
-        _texts.Add(flat); _uis.Add(ui); _ptrs.Add(ptr);
+        // Dedup by UILabel reference
+        if (_uis.Count > 0 && ReferenceEquals(_uis[_uis.Count - 1], __instance)) return;
+        _texts.Add(flat);
+        _uis.Add(__instance);
 
         if (_texts.Count < 2) return;
 
@@ -124,15 +117,15 @@ public static class SkillEffectMergePatch
             if (!TryTranslate(combined, out string trans)) continue;
 
             FLog.Debug($"[SkillMerge] ✓ Combined[{start}]: {combined.Substring(0, Math.Min(40, combined.Length))}");
-            var first = (_uis[start] as Il2CppSystem.Object)?.TryCast<UILabel>();
-            if (first.IsSafe()) first.text = trans;
-
-            for (int i = start + 1; i < _uis.Count; i++)
+            _setting = true;
+            try
             {
-                var lbl = (_uis[i] as Il2CppSystem.Object)?.TryCast<UILabel>();
-                if (lbl.IsSafe()) lbl.text = string.Empty;
+                _uis[start].text = trans;
+                for (int i = start + 1; i < _uis.Count; i++)
+                    _uis[i].text = string.Empty;
             }
-            _texts.Clear(); _uis.Clear(); _ptrs.Clear();
+            finally { _setting = false; }
+            _texts.Clear(); _uis.Clear();
             return;
         }
     }
@@ -144,7 +137,7 @@ public static class SkillEffectMergePatch
             var m = rx.Match(text);
             if (!m.Success) continue;
             var sb = new StringBuilder(tpl);
-            for (int i = 1; i <= m.Groups.Count - 1; i++)
+            for (int i = 1; i < m.Groups.Count; i++)
                 sb.Replace("$" + i, m.Groups[i].Value);
             result = sb.ToString().Replace("\\n", "\n");
             return true;
