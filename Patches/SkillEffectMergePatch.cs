@@ -87,9 +87,16 @@ public static class SkillMergeIndex
 [HarmonyPatch]
 public static class SkillMergeIndexPatch
 {
+    internal static bool Ready;
+
     [HarmonyPatch(typeof(ConstTextData), nameof(ConstTextData.CreateInstanceAndLoadInitialize))]
     [HarmonyPostfix][HarmonyWrapSafe]
-    public static void OnConstText() { FLog.Info("[SkillMerge] ConstText hook fired"); SkillMergeIndex.Build(); }
+    public static void OnConstText()
+    {
+        FLog.Info("[SkillMerge] ConstText hook fired");
+        SkillMergeIndex.Build();
+        Ready = true; // IL2CPP objects now stable — safe for UILabel manipulation
+    }
 
     [HarmonyPatch(typeof(AutoTranslationPlugin), "LoadTranslations")]
     [HarmonyPostfix][HarmonyWrapSafe]
@@ -116,7 +123,56 @@ public static class SkillMergeSetTextPatch
         bool allowStabilizationOnTextComponent,
         bool ignoreComponentState)
     {
-        // DISABLED — fires during XUAT init before IL2CPP objects are stable → crash
-        // The U+3000 trim fix in TranslationCorePatch.PrefixSkillTranslationFix handles this
+        if (!SkillMergeIndexPatch.Ready) return;   // gate: only after ConstTextData init
+        if (_applying) return;
+        if (!SkillMergeIndex.Done || SkillMergeIndex.Patterns.Count == 0) return;
+        if (!string.IsNullOrWhiteSpace(text)) return; // XUAT polls with empty text only
+        try
+        {
+            string current = (ui as Il2CppSystem.Object)?.TryCast<UILabel>()?.text;
+            if (string.IsNullOrWhiteSpace(current) || !SkillMergeIndex.HasJP(current)) return;
+
+            string flat = SkillMergeIndex.Flatten(current);
+            if (string.IsNullOrWhiteSpace(flat) || !SkillMergeIndex.HasJP(flat)) return;
+
+            // Single-effect match
+            if (SkillMergeIndex.TryTranslate(flat, out string single))
+            {
+                FLog.Debug($"[SkillMerge] ✓ {flat.Substring(0, Math.Min(40, flat.Length))}");
+                var lbl1 = (ui as Il2CppSystem.Object)?.TryCast<UILabel>();
+                if (!lbl1.IsSafe()) return;
+                _applying = true;
+                try { lbl1.text = single; } finally { _applying = false; }
+                return;
+            }
+
+            // Buffer for combined multi-effect keys
+            long now = DateTime.UtcNow.Ticks;
+            if (now - _lastTick > Window) { _texts.Clear(); _uis.Clear(); }
+            _lastTick = now;
+            var lbl = (ui as Il2CppSystem.Object)?.TryCast<UILabel>();
+            if (!lbl.IsSafe()) return;
+            if (_uis.Count > 0 && ReferenceEquals(_uis[_uis.Count - 1], lbl)) return;
+            _texts.Add(flat); _uis.Add(lbl);
+            if (_texts.Count < 2) return;
+
+            for (int s = 0; s <= _texts.Count - 2; s++)
+            {
+                string comb = string.Concat(_texts.GetRange(s, _texts.Count - s));
+                if (!SkillMergeIndex.TryTranslate(comb, out string trans)) continue;
+                FLog.Debug($"[SkillMerge] ✓ Combined[{s}]");
+                _applying = true;
+                try
+                {
+                    _uis[s].text = trans;
+                    for (int i = s + 1; i < _uis.Count; i++)
+                        if (_uis[i].IsSafe()) _uis[i].text = string.Empty;
+                }
+                finally { _applying = false; }
+                _texts.Clear(); _uis.Clear();
+                return;
+            }
+        }
+        catch (Exception ex) { FLog.Debug($"[SkillMerge] OnAfterXuat err: {ex.Message}"); }
     }
 }
