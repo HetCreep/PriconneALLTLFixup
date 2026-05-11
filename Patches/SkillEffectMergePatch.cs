@@ -112,6 +112,10 @@ public static class SkillMergeSetTextPatch
     [HarmonyPostfix][HarmonyWrapSafe]
     public static void OnSetText(UILabel __instance, string value)
     {
+        // DISABLED — UILabel.set_text hook causes native IL2CPP crash on startup
+        // TODO: find correct hook point from interop DLL inspection
+        return;
+        /*
         if (_firstCall) { FLog.Info("[SkillMerge] UILabel.set_text patch is ACTIVE"); _firstCall = false; }
         if (_setting) return;
         if (!SkillMergeIndex.Done) SkillMergeIndex.Build();
@@ -155,5 +159,6 @@ public static class SkillMergeSetTextPatch
             _texts.Clear(); _uis.Clear();
             return;
         }
+        */
     }
 }
