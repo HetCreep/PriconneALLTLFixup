@@ -454,7 +454,7 @@ public static class TranslationCorePatch
         if (IsNonJapaneseScript(componentText)) return;        // already translated
         if (componentText.Contains('※') || componentText.Contains('[')) return;
 
-        string flat = componentText.Replace("\n", "");
+        string flat = componentText.Replace("\n", "").Trim('\u3000', '\u00A0', '\u200B', ' ', '\t');
 
         TranslateMethod?.Invoke(__instance, new object[]
         {

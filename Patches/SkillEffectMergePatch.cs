@@ -100,48 +100,50 @@ public static class SkillMergeIndexPatch
 [HarmonyPatch]
 public static class SkillMergeSetTextPatch
 {
-    private static bool _setting;
-    private static bool _firstCall = true;
-
     private static readonly List<string>   _texts = new();
     private static readonly List<UILabel>  _uis   = new();
     private static long _lastTick;
     private static long Window => 200 * TimeSpan.TicksPerMillisecond;
+    private static bool _applying;
 
-    [HarmonyPatch(typeof(UILabel), "set_text")]
+    [HarmonyPatch(typeof(AutoTranslationPlugin), "TranslateOrQueueWebJobImmediate")]
     [HarmonyPostfix][HarmonyWrapSafe]
-    public static void OnSetText(UILabel __instance, string value)
+    public static void OnAfterXuat(
+        object ui,
+        string text,
+        int scope,
+        object info,
+        bool allowStabilizationOnTextComponent,
+        bool ignoreComponentState)
     {
-        // DISABLED — UILabel.set_text hook causes native IL2CPP crash on startup
-        // TODO: find correct hook point from interop DLL inspection
-        return;
-        /*
-        if (_firstCall) { FLog.Info("[SkillMerge] UILabel.set_text patch is ACTIVE"); _firstCall = false; }
-        if (_setting) return;
-        if (!SkillMergeIndex.Done) SkillMergeIndex.Build();
+        if (_applying) return;
+        if (!SkillMergeIndex.Done) return;
         if (SkillMergeIndex.Patterns.Count == 0) return;
-        if (string.IsNullOrWhiteSpace(value)) return;
-        if (!SkillMergeIndex.HasJP(value)) return;
-        if (value.Contains('\u203b')) return;
+        if (!string.IsNullOrWhiteSpace(text)) return; 
 
-        string flat = SkillMergeIndex.Flatten(value);
+        var lbl = (ui as Il2CppSystem.Object)?.TryCast<UILabel>();
+        if (lbl == null) return;
+
+        string current = lbl.text;
+        if (string.IsNullOrWhiteSpace(current)) return;
+        if (!SkillMergeIndex.HasJP(current)) return;
+
+        string flat = SkillMergeIndex.Flatten(current);
         if (string.IsNullOrWhiteSpace(flat) || !SkillMergeIndex.HasJP(flat)) return;
 
-        // Single match
         if (SkillMergeIndex.TryTranslate(flat, out string single))
         {
-            FLog.Debug($"[SkillMerge] ✓ {flat.Substring(0, Math.Min(30, flat.Length))}");
-            _setting = true;
-            try { __instance.text = single; } finally { _setting = false; }
+            FLog.Debug($"[SkillMerge] ✓ XUAT-Postfix: {flat.Substring(0, Math.Min(30, flat.Length))}");
+            _applying = true;
+            try { lbl.text = single; } finally { _applying = false; }
             return;
         }
 
-        // Buffer for combined key
         long now = DateTime.UtcNow.Ticks;
         if (now - _lastTick > Window) { _texts.Clear(); _uis.Clear(); }
         _lastTick = now;
-        if (_uis.Count > 0 && ReferenceEquals(_uis[_uis.Count - 1], __instance)) return;
-        _texts.Add(flat); _uis.Add(__instance);
+        if (_uis.Count > 0 && ReferenceEquals(_uis[_uis.Count - 1], lbl)) return;
+        _texts.Add(flat); _uis.Add(lbl);
         if (_texts.Count < 2) return;
 
         for (int s = 0; s <= _texts.Count - 2; s++)
@@ -149,16 +151,15 @@ public static class SkillMergeSetTextPatch
             string comb = string.Concat(_texts.GetRange(s, _texts.Count - s));
             if (!SkillMergeIndex.TryTranslate(comb, out string trans)) continue;
             FLog.Debug($"[SkillMerge] ✓ Combined[{s}]");
-            _setting = true;
+            _applying = true;
             try
             {
                 _uis[s].text = trans;
                 for (int i = s + 1; i < _uis.Count; i++) _uis[i].text = string.Empty;
             }
-            finally { _setting = false; }
+            finally { _applying = false; }
             _texts.Clear(); _uis.Clear();
             return;
         }
-        */
     }
 }
