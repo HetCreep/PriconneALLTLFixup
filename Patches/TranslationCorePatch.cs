@@ -414,4 +414,52 @@ public static class TranslationCorePatch
         return true;
     }
     #endregion
+
+    #region 5. Module D: Skill Effect Newline Fix (ported from PriconneSkillTLFixup by Olegase)
+    /// <summary>
+    /// Patches XUAT's TranslateOrQueueWebJobImmediate. When called with empty text (re-translation
+    /// pass), reads the UILabel's current text. If it contains \n (game joins multi-line skill
+    /// effects with \n), strips them and retries — translation file keys are flat (no \n).
+    /// Uses object params + reflection for XUAT-internal types unavailable in our assembly.
+    /// </summary>
+    [HarmonyPatch(typeof(AutoTranslationPlugin), "TranslateOrQueueWebJobImmediate")]
+    [HarmonyPrefix]
+    [HarmonyWrapSafe]
+    public static void PrefixSkillNewlineFix(
+        AutoTranslationPlugin __instance,
+        object ui,
+        string text,
+        int scope,
+        object info,                    // TextTranslationInfo — internal, use object
+        bool allowStabilizationOnTextComponent,
+        bool ignoreComponentState,
+        object tc,                      // IReadOnlyTextTranslationCache — internal
+        object untranslatedTextContext, // UntranslatedTextInfo — internal
+        object context)                 // ParserTranslationContext — internal
+    {
+        // Guard: only act on the empty-text re-translation pass
+        bool isSettingText = info != null &&
+            (bool)(info.GetType().GetProperty("IsCurrentlySettingText")?.GetValue(info) ?? false);
+        if (!string.IsNullOrWhiteSpace(text) || isSettingText) return;
+
+        // Read UILabel text directly (avoids inaccessible ComponentExtensions overloads)
+        var il2obj = ui as Il2CppSystem.Object;
+        var label  = il2obj?.TryCast<UILabel>();
+        string componentText = label?.text;
+        if (string.IsNullOrWhiteSpace(componentText)) return;
+        if (!componentText.Contains('\n') || IsNonJapaneseScript(componentText)) return;
+
+        string flat = componentText.Replace("\n", "");
+
+        // Recursive call via reflection so XUAT finds the flat key in the translation cache
+        typeof(AutoTranslationPlugin)
+            .GetMethod("TranslateOrQueueWebJobImmediate")?
+            .Invoke(__instance, new object[]
+            {
+                ui, flat, scope, info,
+                allowStabilizationOnTextComponent, ignoreComponentState,
+                false, false, tc, untranslatedTextContext, context
+            });
+    }
+    #endregion
 }
