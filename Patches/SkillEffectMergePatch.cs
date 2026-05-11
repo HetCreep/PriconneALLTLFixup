@@ -8,10 +8,9 @@ using XUnity.AutoTranslator.Plugin.Core;
 namespace PriconneALLTLFixup.Patches;
 
 /// <summary>
-/// Buffers consecutive JP skill effect UILabel texts (from re-translation pass) and
-/// checks XUAT TextCache for a combined key. If found, queues combined translation on
-/// first label and blanks subsequent labels — matching concatenated keys in translation files.
-/// Lives in a separate class to isolate from the main TranslationCorePatch patching.
+/// Intercepts TranslateOrQueueWebJobImmediate for ALL calls (not just empty-text polls).
+/// For each JP text: strips \n and re-queues (fixes auto-wrapped descriptions).
+/// Also buffers consecutive short JP effect texts and tries a combined key lookup.
 /// </summary>
 [HarmonyPatch]
 public static class SkillEffectMergePatch
@@ -26,7 +25,10 @@ public static class SkillEffectMergePatch
     private static readonly List<string> _texts = new List<string>();
     private static readonly List<object> _uis   = new List<object>();
     private static long   _lastTick;
-    private static long   WindowTicks => 500 * TimeSpan.TicksPerMillisecond;
+    private static bool   _requeuing;
+
+    // Effect window: effects set within this window are considered part of same skill
+    private static long WindowTicks => 100 * TimeSpan.TicksPerMillisecond;
 
     private static MethodInfo      _tryGet;
     private static ConstructorInfo _utCtor;
@@ -46,23 +48,37 @@ public static class SkillEffectMergePatch
         object untranslatedTextContext,
         object context)
     {
-        // Only process the re-translation pass (empty text = XUAT polling for component text)
-        if (!string.IsNullOrWhiteSpace(text)) return;
+        if (_requeuing) return; // prevent recursion from our own re-queues
 
-        string componentText = (ui as Il2CppSystem.Object)?.TryCast<UILabel>()?.text;
-        if (string.IsNullOrWhiteSpace(componentText)) return;
+        // Determine actual text: from param if non-empty, else from UILabel component
+        string effectiveText = string.IsNullOrWhiteSpace(text)
+            ? (ui as Il2CppSystem.Object)?.TryCast<UILabel>()?.text
+            : text;
 
-        // Skip already-translated or special-format text
-        bool hasJP = false;
-        foreach (char c in componentText)
-            if ((c >= '\u3040' && c <= '\u30FF') || (c >= '\u4E00' && c <= '\u9FFF'))
-            { hasJP = true; break; }
-        if (!hasJP) return;
-        if (componentText.Contains('\u203b') || componentText.Contains('[')) return;
+        if (string.IsNullOrWhiteSpace(effectiveText)) return;
+        if (!HasJapanese(effectiveText)) return;
+        if (effectiveText.Contains('\u203b') || effectiveText.Contains('[')) return;
 
-        string flat = componentText.Replace("\n", string.Empty);
+        string flat = effectiveText.Replace("\n", string.Empty);
 
-        // Reset buffer if too much time has passed
+        // If text had \n (auto-wrapped), re-queue flat version so XUAT finds the key
+        if (flat != effectiveText && flat.Length > 0)
+        {
+            _requeuing = true;
+            try
+            {
+                TranslateMethod?.Invoke(__instance, new object[]
+                {
+                    ui, flat, scope, info,
+                    allowStabilizationOnTextComponent, ignoreComponentState,
+                    false, false, tc, untranslatedTextContext, context
+                });
+            }
+            finally { _requeuing = false; }
+            return; // description handled — don't add to effect buffer
+        }
+
+        // No \n → likely a skill effect line. Buffer for combining.
         long now = DateTime.UtcNow.Ticks;
         if (now - _lastTick > WindowTicks)
         {
@@ -71,7 +87,7 @@ public static class SkillEffectMergePatch
         }
         _lastTick = now;
 
-        // Don't add duplicates from repeated XUAT polls
+        // Dedup: avoid adding same text twice from repeated XUAT polls
         if (_texts.Count == 0 || _texts[_texts.Count - 1] != flat)
         {
             _texts.Add(flat);
@@ -84,12 +100,17 @@ public static class SkillEffectMergePatch
         if (!KeyExists(tc, combined)) return;
 
         // Combined key found — translate on first label, blank subsequent
-        TranslateMethod?.Invoke(__instance, new object[]
+        _requeuing = true;
+        try
         {
-            _uis[0], combined, scope, info,
-            allowStabilizationOnTextComponent, ignoreComponentState,
-            false, false, tc, untranslatedTextContext, context
-        });
+            TranslateMethod?.Invoke(__instance, new object[]
+            {
+                _uis[0], combined, scope, info,
+                allowStabilizationOnTextComponent, ignoreComponentState,
+                false, false, tc, untranslatedTextContext, context
+            });
+        }
+        finally { _requeuing = false; }
 
         for (int i = 1; i < _uis.Count; i++)
         {
@@ -99,6 +120,14 @@ public static class SkillEffectMergePatch
 
         _texts.Clear();
         _uis.Clear();
+    }
+
+    private static bool HasJapanese(string s)
+    {
+        foreach (char c in s)
+            if ((c >= '\u3040' && c <= '\u30FF') || (c >= '\u4E00' && c <= '\u9FFF'))
+                return true;
+        return false;
     }
 
     private static bool KeyExists(object tc, string combined)
@@ -125,6 +154,7 @@ public static class SkillEffectMergePatch
             var k1 = _utCtor.Invoke(new object[] { combined, false, false, true, false, false });
             if ((bool)(_tryGet.Invoke(tc, new object[] { k1, false, false, -1, null }) ?? false)) return true;
 
+            // Try with regex enabled (for patterns like (\d+))
             var k2 = _utCtor.Invoke(new object[] { combined, false, false, true, true, true });
             return (bool)(_tryGet.Invoke(tc, new object[] { k2, false, true, -1, null }) ?? false);
         }
