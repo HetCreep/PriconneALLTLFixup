@@ -12,111 +12,118 @@ namespace PriconneALLTLFixup.Patches;
 [HarmonyPatch]
 public static class SkillEffectMergePatch
 {
-    // --- Translation index (loaded from files, bypasses XUAT cache) ---
     private static readonly List<(Regex rx, string tpl)> _patterns = new List<(Regex, string)>();
-    private static bool _loaded;
+    private static bool _indexDone;
 
-    // --- Effect buffer ---
     private static readonly List<string> _texts = new List<string>();
     private static readonly List<object> _uis   = new List<object>();
     private static readonly List<IntPtr> _ptrs  = new List<IntPtr>();
     private static long _lastTick;
     private static long WindowTicks => 200 * TimeSpan.TicksPerMillisecond;
 
-    // Called once after XUAT loads translations — index all regex patterns from text files
+    private static readonly Regex _nguiTag =
+        new Regex(@"\[(?:[^\]]{0,20})\]", RegexOptions.Compiled);
+
+    // Trigger index build after XUAT loads translations
     [HarmonyPatch(typeof(AutoTranslationPlugin), "LoadTranslations")]
     [HarmonyPostfix]
     [HarmonyWrapSafe]
-    public static void PostfixLoadTranslations()
+    public static void PostfixLoadTranslations() => BuildIndex();
+
+    private static void BuildIndex()
     {
         _patterns.Clear();
-        _loaded = false;
         try
         {
-            string root = Path.Combine(Paths.BepInExRootPath, "Translation",
-                ConfigManager.Translation.Code.Value, "Text");
-            if (!Directory.Exists(root)) return;
-
-            foreach (string file in Directory.GetFiles(root, "*.txt", SearchOption.AllDirectories))
+            string translationRoot = Path.Combine(Paths.BepInExRootPath, "Translation");
+            if (!Directory.Exists(translationRoot))
             {
-                foreach (string rawLine in File.ReadLines(file, Encoding.UTF8))
+                FLog.Warn("[SkillMerge] Translation root not found: " + translationRoot);
+                return;
+            }
+
+            // Scan ALL language subdirectories (en, th, etc.)
+            foreach (string langDir in Directory.GetDirectories(translationRoot))
+            {
+                string textDir = Path.Combine(langDir, "Text");
+                if (!Directory.Exists(textDir)) continue;
+
+                foreach (string file in Directory.GetFiles(textDir, "*.txt", SearchOption.AllDirectories))
                 {
-                    string line = rawLine.Trim();
-                    // Regex key format: r:"^...$"=template  OR  r:^...$=template
-                    if (!line.StartsWith("r:", StringComparison.Ordinal)) continue;
-                    int eq = line.IndexOf('=');
-                    if (eq < 3) continue;
-
-                    string keyPart = line.Substring(2, eq - 2).Trim().Trim('"');
-                    string tpl     = line.Substring(eq + 1);
-
-                    try
-                    {
-                        var rx = new Regex(keyPart,
-                            RegexOptions.Compiled | RegexOptions.Singleline);
-                        _patterns.Add((rx, tpl));
-                    }
-                    catch { /* bad regex — skip */ }
+                    try { IndexFile(file); }
+                    catch { /* bad file — skip */ }
                 }
             }
-            _loaded = true;
-            FLog.Info($"[SkillMerge] Indexed {_patterns.Count} regex patterns.");
+            FLog.Info($"[SkillMerge] Indexed {_patterns.Count} regex patterns from {translationRoot}");
         }
-        catch (Exception ex) { FLog.Warn($"[SkillMerge] Index failed: {ex.Message}"); }
+        catch (Exception ex) { FLog.Warn("[SkillMerge] Index error: " + ex.Message); }
+        finally { _indexDone = true; }
     }
 
-    // --- Main hook: buffer effect texts, try combined, apply directly ---
+    private static void IndexFile(string file)
+    {
+        foreach (string rawLine in File.ReadLines(file, Encoding.UTF8))
+        {
+            string line = rawLine.Trim();
+            if (!line.StartsWith("r:", StringComparison.Ordinal)) continue;
+            int eq = line.IndexOf('=');
+            if (eq < 3) continue;
+            string keyPart = line.Substring(2, eq - 2).Trim().Trim('"');
+            string tpl     = line.Substring(eq + 1);
+            try { _patterns.Add((new Regex(keyPart, RegexOptions.Compiled | RegexOptions.Singleline), tpl)); }
+            catch { }
+        }
+    }
+
     [HarmonyPatch(typeof(AutoTranslationPlugin), "TranslateOrQueueWebJobImmediate")]
     [HarmonyPostfix]
     [HarmonyWrapSafe]
-    public static void PostfixMergeEffects(
-        object ui, string text,
-        bool allowStabilizationOnTextComponent,
-        bool ignoreComponentState)
+    public static void PostfixMergeEffects(object ui, string text)
     {
-        if (!_loaded) return;
+        // Lazy index on first call in case LoadTranslations fired before our patch registered
+        if (!_indexDone) BuildIndex();
+        if (_patterns.Count == 0) return;
 
         string effectiveText = string.IsNullOrWhiteSpace(text)
             ? (ui as Il2CppSystem.Object)?.TryCast<UILabel>()?.text
             : text;
         if (string.IsNullOrWhiteSpace(effectiveText)) return;
         if (!HasJP(effectiveText)) return;
-        if (effectiveText.Contains('\u203b')) return; // skip ※ markers
+        if (effectiveText.Contains('\u203b')) return;
 
         IntPtr ptr = (ui as Il2CppSystem.Object)?.Pointer ?? IntPtr.Zero;
         if (ptr == IntPtr.Zero) return;
 
-        // Strip NGUI markup tags [b], [-], [FF7C4E] etc. and trim all Unicode whitespace incl \u3000
-        string stripped = StripNgui(effectiveText.Replace("\n", string.Empty));
-        string flat = stripped.Trim('\u3000', '\u00A0', '\u200B', ' ', '\t');
-        if (string.IsNullOrWhiteSpace(flat)) return;
+        // Strip NGUI markup, collapse newlines, trim all Unicode whitespace incl U+3000
+        string flat = _nguiTag.Replace(effectiveText.Replace("\n", string.Empty), string.Empty)
+                               .Trim('\u3000', '\u00A0', '\u200B', ' ', '\t');
+        if (string.IsNullOrWhiteSpace(flat) || !HasJP(flat)) return;
 
-        // Single-text translation (descriptions + single-effect skills)
+        // Single-text: try direct regex match first
         if (TryTranslate(flat, out string single))
         {
-            FLog.Debug($"[SkillMerge] Single match: {flat.Substring(0, Math.Min(30, flat.Length))}");
+            FLog.Debug($"[SkillMerge] ✓ Single: {flat.Substring(0, Math.Min(30, flat.Length))}");
             var lbl = (ui as Il2CppSystem.Object)?.TryCast<UILabel>();
             if (lbl.IsSafe()) lbl.text = single;
             return;
         }
 
-        // Buffer for multi-effect combining
+        // Buffer for combined multi-effect key
         long now = DateTime.UtcNow.Ticks;
         if (now - _lastTick > WindowTicks) { _texts.Clear(); _uis.Clear(); _ptrs.Clear(); }
         _lastTick = now;
 
-        if (_ptrs.Count > 0 && _ptrs[_ptrs.Count - 1] == ptr) return; // same label polled again
+        if (_ptrs.Count > 0 && _ptrs[_ptrs.Count - 1] == ptr) return;
         _texts.Add(flat); _uis.Add(ui); _ptrs.Add(ptr);
 
         if (_texts.Count < 2) return;
 
-        // Try all suffixes (handles description-before-effects)
         for (int start = 0; start <= _texts.Count - 2; start++)
         {
             string combined = string.Concat(_texts.GetRange(start, _texts.Count - start));
             if (!TryTranslate(combined, out string trans)) continue;
 
-            FLog.Debug($"[SkillMerge] Combined match start={start}: {combined.Substring(0, Math.Min(40, combined.Length))}");
+            FLog.Debug($"[SkillMerge] ✓ Combined[{start}]: {combined.Substring(0, Math.Min(40, combined.Length))}");
             var first = (_uis[start] as Il2CppSystem.Object)?.TryCast<UILabel>();
             if (first.IsSafe()) first.text = trans;
 
@@ -145,9 +152,6 @@ public static class SkillEffectMergePatch
         result = null;
         return false;
     }
-
-    private static readonly Regex _nguiTag = new Regex(@"\[(?:[^\]]{0,20})\]", RegexOptions.Compiled);
-    private static string StripNgui(string s) => _nguiTag.Replace(s, string.Empty);
 
     private static bool HasJP(string s)
     {
