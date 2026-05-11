@@ -66,6 +66,7 @@
 		<Compile Include="Patches\WindowSystemPatch.cs" />
 		<Compile Include="Patches\EngineBridgePatch.cs" />
 		<Compile Include="Patches\TextSafetyPatch.cs" />
+		<Compile Include="Patches\SkillEffectMergePatch.cs" />
 	</ItemGroup>
 
 
