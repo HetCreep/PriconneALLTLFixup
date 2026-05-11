@@ -423,11 +423,19 @@ public static class TranslationCorePatch
             .FirstOrDefault(m => m.Name == "TranslateOrQueueWebJobImmediate"
                               && m.GetParameters().Length >= 9);
 
+    // Parallel lists (no ValueTuple) to avoid potential JIT issues in IL2CPP context
+    private static readonly List<string> _effectTexts = new();
+    private static readonly List<object> _effectUIs   = new();
+    private static long _lastEffectTick;
+    private const long EffectWindowTicks = 500 * TimeSpan.TicksPerMillisecond;
+    private static MethodInfo      _tryGetTranslation;
+    private static ConstructorInfo _untranslatedTextCtor;
+
     /// <summary>
-    /// When XUAT polls a UILabel with empty text (re-translation pass), native game code
-    /// has already set the label text before XUAT could intercept. Read the label directly,
-    /// strip any \n (multi-line effects joined by game), and re-queue for XUAT's regex lookup.
-    /// Works for both single-effect (no \n) and multi-effect (\n-joined) skill labels.
+    /// When XUAT polls a UILabel with empty text (re-translation pass), read the label
+    /// directly, strip \n, and re-queue. Also buffer consecutive JP effect texts; if the
+    /// combined key exists in XUAT TextCache, translate combined on first label and blank
+    /// subsequent labels — matching the concatenated translation file key format.
     /// </summary>
     [HarmonyPatch(typeof(AutoTranslationPlugin), "TranslateOrQueueWebJobImmediate")]
     [HarmonyPrefix]
@@ -451,17 +459,75 @@ public static class TranslationCorePatch
 
         string componentText = (ui as Il2CppSystem.Object)?.TryCast<UILabel>()?.text;
         if (string.IsNullOrWhiteSpace(componentText)) return;
-        if (IsNonJapaneseScript(componentText)) return;        // already translated
+        if (IsNonJapaneseScript(componentText)) return;
         if (componentText.Contains('※') || componentText.Contains('[')) return;
 
         string flat = componentText.Replace("\n", "");
 
+        // Buffer management — reset if > 500ms since last effect text
+        long now = DateTime.UtcNow.Ticks;
+        if (now - _lastEffectTick > EffectWindowTicks)
+        {
+            _effectTexts.Clear();
+            _effectUIs.Clear();
+        }
+        _lastEffectTick = now;
+        _effectTexts.Add(flat);
+        _effectUIs.Add(ui);
+
+        // Individual re-queue (original OlegZuev behavior)
         TranslateMethod?.Invoke(__instance, new object[]
         {
             ui, flat, scope, info,
             allowStabilizationOnTextComponent, ignoreComponentState,
             false, false, tc, untranslatedTextContext, context
         });
+
+        // Combined key lookup — only when multiple effects buffered
+        if (_effectTexts.Count < 2) return;
+        string combined = string.Concat(_effectTexts);
+        if (!TryCombinedKeyExists(tc, combined)) return;
+
+        // Combined translation found — set on first label, blank subsequent
+        TranslateMethod?.Invoke(__instance, new object[]
+        {
+            _effectUIs[0], combined, scope, info,
+            allowStabilizationOnTextComponent, ignoreComponentState,
+            false, false, tc, untranslatedTextContext, context
+        });
+        for (int i = 1; i < _effectUIs.Count; i++)
+        {
+            var lbl = (_effectUIs[i] as Il2CppSystem.Object)?.TryCast<UILabel>();
+            if (lbl.IsSafe()) lbl.text = string.Empty;
+        }
+        _effectTexts.Clear();
+        _effectUIs.Clear();
+    }
+
+    private static bool TryCombinedKeyExists(object tc, string combined)
+    {
+        try
+        {
+            if (tc == null) return false;
+            var tcType = tc.GetType();
+            if (_untranslatedTextCtor == null)
+            {
+                var ut = tcType.Assembly.GetType("XUnity.AutoTranslator.Plugin.Core.UntranslatedText");
+                _untranslatedTextCtor = ut?.GetConstructor(new[]
+                    { typeof(string), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool) });
+            }
+            if (_untranslatedTextCtor == null) return false;
+            if (_tryGetTranslation == null)
+                _tryGetTranslation = tcType.GetMethod("TryGetTranslation",
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (_tryGetTranslation == null) return false;
+
+            var k1 = _untranslatedTextCtor.Invoke(new object[] { combined, false, false, true, false, false });
+            if ((bool)(_tryGetTranslation.Invoke(tc, new object[] { k1, false, false, -1, null }) ?? false)) return true;
+            var k2 = _untranslatedTextCtor.Invoke(new object[] { combined, false, false, true, true, true });
+            return (bool)(_tryGetTranslation.Invoke(tc, new object[] { k2, false, true, -1, null }) ?? false);
+        }
+        catch { return false; }
     }
     #endregion
-}
+}
