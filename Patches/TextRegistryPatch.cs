@@ -105,7 +105,7 @@ public static class TextRegistryPatch
 
         TranslatedStrings.TryGetValue(SKILL_EFFECT_HEADER_ID, out string effectHeaderTL);
 
-        var plates = Object.FindObjectsOfType<PartsUnitSkillDetailTextPlate>();
+        var plates = UnityEngine.Object.FindObjectsOfType<PartsUnitSkillDetailTextPlate>();
         if (plates == null || plates.Length == 0) return;
 
         bool    inEffect         = false;
