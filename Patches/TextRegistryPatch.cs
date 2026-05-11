@@ -95,25 +95,40 @@ public static class TextRegistryPatch
         {
             StoredSkillTexts.Clear();
 
-            // ── Step 1: Snapshot via foreach (stable for IL2CPP List<ValueTuple>) ─
-            // get_Item indexed access is unstable; foreach/enumerator is reliable.
-            var snapshot = new System.Collections.Generic.List<(PartsUnitSkillDetailTextPlate.ePlateType type, string text)>();
-            foreach (var il2Item in _detailTextList)
-                snapshot.Add((il2Item.Item1, il2Item.Item2));
+            // IMPORTANT: IL2CPP List<ValueTuple<enum,string>> interop quirks:
+            //   • foreach / GetEnumerator  → native crash (enumerator value-type marshal fails)
+            //   • Clear() / Add()          → native crash (corrupts native list state)
+            //   • get_Item[i]              → managed ArgumentOutOfRangeException (safe, catchable)
+            //   • RemoveAt(i)              → managed exception (safe, catchable)
+            // Strategy: indexed for loop with try-catch, deferred RemoveAt with try-catch.
 
-            if (snapshot.Count == 0) return;
+            int count;
+            try { count = _detailTextList.Count; }
+            catch { return; }
 
-            // ── Step 2: Determine merge groups in managed memory ─────────────────
             TranslatedStrings.TryGetValue(SKILL_EFFECT_HEADER_ID, out string targetHeader);
             OriginalStrings.TryGetValue(SKILL_EFFECT_HEADER_ID, out string originalHeader);
 
-            var toRemove = new System.Collections.Generic.List<int>(); // IL2CPP list indices
+            var toRemove = new System.Collections.Generic.List<int>();
             bool isEffectGroup = false;
             int sequenceCount = 0;
 
-            for (int i = 0; i < snapshot.Count; i++)
+            for (int i = 0; i < count; i++)
             {
-                var (plateType, content) = snapshot[i];
+                PartsUnitSkillDetailTextPlate.ePlateType plateType;
+                string content;
+                try
+                {
+                    var item = _detailTextList[i];
+                    plateType = item.Item1;
+                    content   = item.Item2;
+                }
+                catch (Exception ex)
+                {
+                    FLog.Debug($"[Skill] get_Item({i}/{count}) failed: {ex.Message} — stopping early");
+                    break; // abort cleanly; toRemove stays as-is
+                }
+
                 sequenceCount++;
 
                 if (content == "スキル効果" || content == targetHeader || content == originalHeader)
@@ -124,9 +139,9 @@ public static class TextRegistryPatch
 
                 if (sequenceCount > 2 && StoredSkillTexts.Count > 0)
                 {
-                    var lastStored = StoredSkillTexts[StoredSkillTexts.Count - 1];
-                    lastStored.Text += content;
-                    StoredSkillTexts[StoredSkillTexts.Count - 1] = lastStored;
+                    var last = StoredSkillTexts[StoredSkillTexts.Count - 1];
+                    last.Text += content;
+                    StoredSkillTexts[StoredSkillTexts.Count - 1] = last;
                     toRemove.Add(i);
                 }
                 else
@@ -135,9 +150,7 @@ public static class TextRegistryPatch
                 }
             }
 
-            if (toRemove.Count == 0) return;
-
-            // ── Step 3: Deferred RemoveAt in reverse (never Clear/Add — causes native crash) ─
+            // Deferred reverse removal — RemoveAt is a managed call (safe)
             for (int j = toRemove.Count - 1; j >= 0; j--)
             {
                 try { _detailTextList.RemoveAt(toRemove[j]); }
@@ -146,6 +159,7 @@ public static class TextRegistryPatch
         }
     }
     #endregion
+
 
     #region 4. Registry Control API
     public static void ClearCache()
