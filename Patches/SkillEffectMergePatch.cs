@@ -17,9 +17,9 @@ public static class SkillEffectMergePatch
             .FirstOrDefault(m => m.Name == "TranslateOrQueueWebJobImmediate"
                               && m.GetParameters().Length >= 9);
 
-    // Parallel lists — avoids ValueTuple
-    private static readonly List<string> _texts = new List<string>();
-    private static readonly List<object> _uis   = new List<object>();
+    private static readonly List<string> _texts   = new List<string>();
+    private static readonly List<object> _uis     = new List<object>();
+    private static readonly List<IntPtr> _uiPtrs  = new List<IntPtr>();
     private static long _lastTick;
     private static bool _requeuing;
     private static long WindowTicks => 200 * TimeSpan.TicksPerMillisecond;
@@ -53,11 +53,15 @@ public static class SkillEffectMergePatch
         if (!HasJapanese(effectiveText)) return;
         if (effectiveText.Contains('\u203b') || effectiveText.Contains('[')) return;
 
+        // Get IL2CPP pointer for dedup — same UILabel polled again → skip
+        IntPtr uiPtr = (ui as Il2CppSystem.Object)?.Pointer ?? IntPtr.Zero;
+        if (uiPtr == IntPtr.Zero) return;
+
         string flat = effectiveText.Replace("\n", string.Empty);
         if (string.IsNullOrWhiteSpace(flat)) return;
 
-        // If text had \n (auto-wrapped), re-queue the flat version for XUAT lookup
-        // Do NOT return — still add flat to buffer for combining
+        // If text had \n (auto-wrapped UILabel), re-queue flat so XUAT finds the key.
+        // Do NOT return — still add to buffer for combining.
         if (flat != effectiveText)
         {
             _requeuing = true;
@@ -79,27 +83,30 @@ public static class SkillEffectMergePatch
         {
             _texts.Clear();
             _uis.Clear();
+            _uiPtrs.Clear();
         }
         _lastTick = now;
 
-        // Dedup repeated polls of the same UILabel
-        if (_texts.Count == 0 || _texts[_texts.Count - 1] != flat)
-        {
-            _texts.Add(flat);
-            _uis.Add(ui);
-        }
+        // Dedup by UI POINTER — same UILabel polled again → skip.
+        // Allow same TEXT from different UILabels (e.g. identical duplicate effects).
+        if (_uiPtrs.Count > 0 && _uiPtrs[_uiPtrs.Count - 1] == uiPtr) return;
 
-        // Need at least 2 texts before trying combined
+        _texts.Add(flat);
+        _uis.Add(ui);
+        _uiPtrs.Add(uiPtr);
+
+        // Need ≥ 2 entries before trying combined
         if (_texts.Count < 2) return;
 
-        // Try all suffixes of the buffer — handles description-before-effects case:
-        // buffer = [desc, eff1, eff2, eff3], try eff1+eff2+eff3, then eff2+eff3, etc.
+        // Try all suffixes — handles description-before-effects:
+        // buffer = [desc, eff1, eff1, eff2, eff2]
+        // suffix from 1 = eff1+eff1+eff2+eff2 → matches combined key
         for (int start = 0; start <= _texts.Count - 2; start++)
         {
             string combined = string.Concat(_texts.Skip(start));
             if (!KeyExists(tc, combined)) continue;
 
-            // Combined key found at this suffix — translate first label, blank rest
+            // Combined key found — translate first label, blank the rest
             _requeuing = true;
             try
             {
@@ -120,6 +127,7 @@ public static class SkillEffectMergePatch
 
             _texts.Clear();
             _uis.Clear();
+            _uiPtrs.Clear();
             return;
         }
     }
@@ -157,7 +165,7 @@ public static class SkillEffectMergePatch
             var k1 = _utCtor.Invoke(new object[] { combined, false, false, true, false, false });
             if ((bool)(_tryGet.Invoke(tc, new object[] { k1, false, false, -1, null }) ?? false)) return true;
 
-            // Regex-capable key (for patterns like (\d+))
+            // Regex-capable key (for (\d+) patterns)
             var k2 = _utCtor.Invoke(new object[] { combined, false, false, true, true, true });
             return (bool)(_tryGet.Invoke(tc, new object[] { k2, false, true, -1, null }) ?? false);
         }
