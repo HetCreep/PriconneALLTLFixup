@@ -103,27 +103,8 @@ public static class SkillMergeIndexPatch
     public static void OnLoadTranslations() => SkillMergeIndex.Build();
 }
 
-// ── Patch 2: hook UILabel.set_text ────────────────────────────────────────────
-[HarmonyPatch]
-public static class SkillMergeSetTextPatch
-{
-    private static readonly List<string>   _texts = new();
-    private static readonly List<UILabel>  _uis   = new();
-    private static long _lastTick;
-    private static long Window => 200 * TimeSpan.TicksPerMillisecond;
-    private static bool _applying;
-
-    [HarmonyPatch(typeof(AutoTranslationPlugin), "TranslateOrQueueWebJobImmediate")]
-    [HarmonyPostfix][HarmonyWrapSafe]
-    public static void OnAfterXuat(
-        object ui,
-        string text,
-        int scope,
-        object info,
-        bool allowStabilizationOnTextComponent,
-        bool ignoreComponentState)
-    {
-        // DISABLED: ConstTextData gate fires BEFORE XUAT init — need post-XUAT hook point
-        // TODO: use a hook that fires after "Loaded XUnity.AutoTranslator into Unity"
-    }
-}
+// Patch 2 removed: SkillMergeSetTextPatch was disabled (empty body) but still
+// registered as a Postfix on TranslateOrQueueWebJobImmediate. Combined with the
+// active Prefix in TranslationCorePatch.PrefixSkillTranslationFix, MonoMod failed
+// to JIT-compile the patched method (Fatal CLR error 0x80131506) — crashing the
+// game at boot. The SkillMerge logic now lives entirely in PrefixSkillTranslationFix.

@@ -34,11 +34,29 @@ public static class TranslationCorePatch
     private static readonly Regex GradientRegex = new(@"[\[\(]([0-9A-Fa-f,sS\s]{13,20})[\]\)]", RegexOptions.Compiled);
     private static readonly Regex PlaceholderHallucinationRegex = new(@"[\[\(](\s*\d+\s*)[\]\)]", RegexOptions.Compiled);
 
-    // Strips multi-segment NGUI bracket tags MT engines produce (e.g. [FF7C4E,D62,146]).
-    // Valid NGUI color tags are exactly [RRGGBB] (6 hex) or [-]. Cross-class repair cannot
-    // fix these because the original uses ColorRegex and the translation uses GradientRegex.
+    // Matches multi-segment NGUI bracket tags such as game-original gradients
+    // (e.g. [f374ff,95289f]) and MT-mangled fragments (e.g. [FF7C4E,D62,146]).
+    // Valid single-color NGUI tags ([RRGGBB], [F00], [-]) do not contain commas
+    // and are intentionally not matched.
+    // First segment kept at {3,6} to require a real-looking hex anchor; subsequent
+    // segments allow {1,6} because MT engines often truncate or pad them.
     private static readonly Regex MalformedNguiTagRegex = new(
-        @"\[[0-9A-Fa-f]{3,6}(?:,[0-9A-Fa-f]{3,6})+\]", RegexOptions.Compiled);
+        @"\[[0-9A-Fa-f]{3,6}(?:,[0-9A-Fa-f]{1,6})+\]", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Reduces a matched multi-segment bracket tag to a single-color tag using the
+    /// first hex segment, which NGUI's parser handles correctly. Preserves the
+    /// game's intended color (approximate, since gradient end-color is dropped).
+    /// If the first segment isn't a valid 3- or 6-char hex (rare MT mangling like
+    /// <c>[B74F,9D,269]</c> where the first is 4 chars), the entire tag is dropped.
+    /// </summary>
+    private static readonly MatchEvaluator MalformedTagEvaluator = m =>
+    {
+        string inner = m.Value.Substring(1, m.Value.Length - 2);
+        int comma = inner.IndexOf(',');
+        string firstSeg = comma < 0 ? inner : inner.Substring(0, comma);
+        return (firstSeg.Length == 3 || firstSeg.Length == 6) ? "[" + firstSeg + "]" : string.Empty;
+    };
     #endregion
 
     #region 2. Module A: Preprocessor & Repair (SetText)
@@ -48,7 +66,7 @@ public static class TranslationCorePatch
     ///     string originalText, TextTranslationInfo info, string source)
     /// Harmony allows receiving only the named parameters we care about.
     /// </summary>
-    [HarmonyPatch("XUnity.AutoTranslator.Plugin.Core.AutoTranslationPlugin, XUnity.AutoTranslator.Plugin.Core", "SetText")]
+    [HarmonyPatch(typeof(AutoTranslationPlugin), "SetText")]
     [HarmonyPrefix]
     [HarmonyWrapSafe]
     public static bool PrefixSetText(ref string text, string originalText)
@@ -58,10 +76,14 @@ public static class TranslationCorePatch
 
         text = text.Sanitize();
 
-        // Always strip MT-hallucinated multi-segment color tags (e.g. [FF7C4E,D62,146]).
-        // This is not a repair feature — it must run regardless of TranslationRepair setting.
-        if (MalformedNguiTagRegex.IsMatch(text) && !MalformedNguiTagRegex.IsMatch(originalText))
-            text = MalformedNguiTagRegex.Replace(text, string.Empty);
+        // Collapse multi-segment bracket tags to a single-color tag (preserves the game's
+        // intended hue when present, e.g. [f374ff,95289f]→[f374ff]) or drops entirely when
+        // the first segment isn't a valid hex length. Runs unconditionally — game-original
+        // gradients render fine in the JP font but show as literal brackets after XUAT swaps
+        // in our font, so they must be normalised either way.
+        // Not a repair feature — must run regardless of TranslationRepair setting.
+        if (MalformedNguiTagRegex.IsMatch(text))
+            text = MalformedNguiTagRegex.Replace(text, MalformedTagEvaluator);
 
         if (!ConfigManager.Translation.TranslationRepair.Value) return true;
 
@@ -130,12 +152,9 @@ public static class TranslationCorePatch
 
         text = text.Replace("[--]", "[-]").Replace(@"\ n", @"\n").Trim();
 
-        // Strip multi-segment bracket color tags that MT engines produce from NGUI [RRGGBB] codes.
-        // Guard: only strip when the original did NOT have this pattern — if the game intentionally
-        // uses gradient tags like [FF7C4E,D62,146], they appear in both original and translated.
-        // Stripping without this guard caused party-label text to become invisible.
-        if (MalformedNguiTagRegex.IsMatch(text) && !MalformedNguiTagRegex.IsMatch(original))
-            text = MalformedNguiTagRegex.Replace(text, string.Empty);
+        // Collapse multi-segment bracket tags to a single-color tag. See PrefixSetText.
+        if (MalformedNguiTagRegex.IsMatch(text))
+            text = MalformedNguiTagRegex.Replace(text, MalformedTagEvaluator);
     }
     #endregion
 
@@ -240,6 +259,87 @@ public static class TranslationCorePatch
     public static void PostfixPlayerNameOnReload(AutoTranslationPlugin __instance, bool reload)
     {
         if (reload) ReplacePlayerNameInCache();
+        StripMalformedTagsFromCache();
+    }
+
+    /// <summary>
+    /// Walks XUAT's translation cache and strips MT-mangled multi-segment NGUI color
+    /// tags (e.g. <c>[FF7C4E,D62,146]</c>) from every cached translation value. This
+    /// catches entries where the malformed tag was baked into the cache before
+    /// <c>PrefixSetText</c> existed, or paths that bypass <c>SetText</c> entirely
+    /// (cache hits served via fast path). Runs on every cache load — including the
+    /// initial one — so the in-memory cache is always clean.
+    /// </summary>
+    internal static void StripMalformedTagsFromCache()
+    {
+        try
+        {
+            var pluginType = typeof(AutoTranslationPlugin);
+            object? plugin = (pluginType.GetProperty("Current", _sf) ?? (object?)pluginType.GetField("Current", _sf)) switch
+            {
+                PropertyInfo p => p.GetValue(null),
+                FieldInfo    f => f.GetValue(null),
+                _              => null
+            };
+            if (plugin == null) return;
+
+            object? cache = (pluginType.GetProperty("TextCache", _bf) ?? (object?)pluginType.GetField("TextCache", _bf)) switch
+            {
+                PropertyInfo p => p.GetValue(plugin),
+                FieldInfo    f => f.GetValue(plugin),
+                _              => null
+            };
+            if (cache == null) return;
+
+            int stripped = 0;
+            stripped += StripCacheDict(cache, "_translations",        isReverse: false);
+            stripped += StripCacheDict(cache, "_reverseTranslations", isReverse: true);
+
+            if (stripped > 0)
+                FLog.Info($"[Repair] Stripped malformed NGUI tags from {stripped} cached translations.");
+        }
+        catch (Exception ex) { FLog.Warn($"[Repair] StripMalformedTagsFromCache failed: {ex.Message}"); }
+    }
+
+    private static int StripCacheDict(object cache, string fieldName, bool isReverse)
+    {
+        var field = cache.GetType().GetField(fieldName, _bf);
+        if (field == null) return 0;
+
+        var dict = field.GetValue(cache) as System.Collections.IDictionary;
+        if (dict == null) return 0;
+
+        int count = 0;
+        var keys = new object[dict.Keys.Count];
+        dict.Keys.CopyTo(keys, 0);
+
+        foreach (object rawKey in keys)
+        {
+            if (rawKey is not string key) continue;
+            object? entry = dict[key];
+
+            if (isReverse)
+            {
+                if (entry is string sval && MalformedNguiTagRegex.IsMatch(sval))
+                {
+                    dict[key] = MalformedNguiTagRegex.Replace(sval, MalformedTagEvaluator);
+                    count++;
+                }
+            }
+            else
+            {
+                if (entry != null)
+                {
+                    var tp = entry.GetType().GetProperty("Translation", _bf);
+                    if (tp?.GetValue(entry) is string tv && MalformedNguiTagRegex.IsMatch(tv))
+                    {
+                        tp.SetValue(entry, MalformedNguiTagRegex.Replace(tv, MalformedTagEvaluator));
+                        count++;
+                    }
+                }
+            }
+        }
+        return count;
     }
 
     /// <summary>
@@ -329,72 +429,7 @@ public static class TranslationCorePatch
     }
     #endregion
 
-    #region 6. Module E: Skill Translation Queue
-    /// <summary>
-    /// Prefix on <c>AutoTranslationPlugin.TranslateOrQueueWebJobImmediate</c>:
-    /// resolves empty or whitespace <paramref name="text"/> by reading the actual text
-    /// from the UI component, then queues a single-line translation job (stripping embedded
-    /// newlines) when no cached translation exists.
-    /// This prevents skill descriptions with leading newlines from being silently skipped.
-    /// </summary>
-    [HarmonyPatch(typeof(AutoTranslationPlugin), "TranslateOrQueueWebJobImmediate")]
-    [HarmonyPrefix]
-    [HarmonyWrapSafe]
-    public static void PrefixSkillTranslation(
-        AutoTranslationPlugin __instance,
-        object                ui,
-        ref string            text,
-        int                   scope,
-        object                info,
-        bool                  allowStabilizationOnTextComponent,
-        bool                  ignoreComponentState,
-        bool                  allowStartTranslationImmediate,
-        bool                  allowStartTranslationLater,
-        object                tc,
-        object                untranslatedTextContext,
-        object                context)
-    {
-        // Guard: instance or text null (IL2CPP can pass null refs via Harmony)
-        if (__instance == null || text == null) return;
-
-        // Skip when text is already populated (non-empty, non-whitespace)
-        if (!string.IsNullOrWhiteSpace(text)) return;
-
-        // Check IsCurrentlySettingText via reflection (TextTranslationInfo is internal)
-        if (info != null)
-        {
-            try
-            {
-                var prop = info.GetType().GetProperty("IsCurrentlySettingText", _bf);
-                if (prop?.GetValue(info) is true) return;
-            }
-            catch { /* reflection on IL2CPP types can throw — skip safely */ }
-        }
-
-        // text is empty/whitespace here — safe to call Contains on original ref
-        // (re-read to guard against concurrent modification)
-        string safeText = text ?? string.Empty;
-
-        // Skip content with special markers or already-translated non-Japanese text
-        if (safeText.Contains('※') || safeText.Contains('[') || IsNonJapaneseScript(safeText)) return;
-
-        // Queue a flat (no-newline) version — avoids newline-related cache misses in XUAT
-        string flatText = safeText.Replace("\n", string.Empty);
-        if (flatText == safeText) return; // no change → nothing to re-queue
-
-        // Re-invoke with original parameters except text (now flat) and no-start flags
-        try
-        {
-            var method = typeof(AutoTranslationPlugin)
-                .GetMethod("TranslateOrQueueWebJobImmediate", _bf);
-            method?.Invoke(__instance, new object?[] {
-                ui, flatText, scope, info,
-                allowStabilizationOnTextComponent, ignoreComponentState,
-                false, false, tc, untranslatedTextContext, context
-            });
-        }
-        catch (Exception ex) { FLog.Debug($"[SkillTL] Re-queue failed: {ex.Message}"); }
-    }
+    #region 6. Module E: Script Detection Helpers
 
     /// <summary>
     /// Returns <c>true</c> when <paramref name="text"/> consists entirely of characters
@@ -428,100 +463,14 @@ public static class TranslationCorePatch
     private static long _lastTick;
     private static long Window => 200 * TimeSpan.TicksPerMillisecond;
 
-    /// <summary>
-    /// When XUAT polls a UILabel with empty text (re-translation pass), native game code
-    /// has already set the label text before XUAT could intercept. Read the label directly,
-    /// strip any \n (multi-line effects joined by game), and re-queue.
-    /// Works for both single-effect (no \n) and multi-effect (\n-joined) skill labels.
-    /// </summary>
-    [HarmonyPatch(typeof(AutoTranslationPlugin), "TranslateOrQueueWebJobImmediate")]
-    [HarmonyPrefix]
-    public static bool PrefixSkillTranslationFix(
-        AutoTranslationPlugin __instance,
-        ref string __result,
-        object ui,
-        string text,
-        int scope,
-        object info,
-        bool allowStabilizationOnTextComponent,
-        bool ignoreComponentState,
-        object tc,
-        object untranslatedTextContext,
-        object context)
-    {
-        if (!string.IsNullOrWhiteSpace(text)) return true;
-
-        var isSettingProp = info?.GetType().GetProperty("IsCurrentlySettingText");
-        bool isSettingText = isSettingProp != null && (bool)(isSettingProp.GetValue(info) ?? false);
-        if (isSettingText) return true;
-
-        var lbl = (ui as Il2CppSystem.Object)?.TryCast<UILabel>();
-        if (!lbl.IsSafe()) return true;
-
-        string componentText = lbl.text;
-        if (string.IsNullOrWhiteSpace(componentText)) return true;
-        if (IsNonJapaneseScript(componentText)) return true;
-        if (componentText.Contains('※') || componentText.Contains('[')) return true;
-
-        string flat = componentText.Replace("\n", "").Trim('\u3000', '\u00A0', '\u200B', ' ', '\t');
-
-        // 1. Single-effect match
-        if (SkillMergeIndex.Done && SkillMergeIndex.Patterns.Count > 0)
-        {
-            if (SkillMergeIndex.TryTranslate(flat, out string single))
-            {
-                FLog.Debug($"[SkillMerge] \u2713 PREFIX: {flat.Substring(0, Math.Min(40, flat.Length))}");
-                __result = single;
-                return false; // Skip XUAT — our translation wins
-            }
-
-            // 2. Multi-effect buffering
-            long now = DateTime.UtcNow.Ticks;
-            if (now - _lastTick > Window) { _texts.Clear(); _uis.Clear(); }
-            _lastTick = now;
-            
-            if (_uis.Count == 0 || !ReferenceEquals(_uis[_uis.Count - 1], lbl))
-            {
-                _texts.Add(flat); _uis.Add(lbl);
-            }
-
-            if (_texts.Count >= 2)
-            {
-                for (int s = 0; s <= _texts.Count - 2; s++)
-                {
-                    string comb = string.Concat(_texts.GetRange(s, _texts.Count - s));
-                    if (SkillMergeIndex.TryTranslate(comb, out string trans))
-                    {
-                        FLog.Debug($"[SkillMerge] \u2713 PREFIX-Combined[{s}]");
-                        
-                        // Disable XUAT hook to safely update previous labels
-                        if (isSettingProp != null) isSettingProp.SetValue(info, true);
-                        try
-                        {
-                            _uis[s].text = trans;
-                            for (int i = s + 1; i < _uis.Count; i++)
-                                if (_uis[i].IsSafe()) _uis[i].text = string.Empty;
-                        }
-                        catch { }
-                        if (isSettingProp != null) isSettingProp.SetValue(info, false);
-
-                        _texts.Clear(); _uis.Clear();
-                        __result = null; // We handled it manually
-                        return false; 
-                    }
-                }
-            }
-        }
-
-        // 3. Fall back to XUAT's own pattern engine
-        __result = (string)TranslateMethod?.Invoke(__instance, new object[]
-        {
-            ui, flat, scope, info,
-            allowStabilizationOnTextComponent, ignoreComponentState,
-            false, false, tc, untranslatedTextContext, context
-        });
-
-        return false; // Skip original XUAT
-    }
+    // NOTE: Previously hooked AutoTranslationPlugin.TranslateOrQueueWebJobImmediate
+    // (Prefix). MonoMod failed to JIT-compile the patched method (Fatal CLR error
+    // 0x80131506) because that target combines INTERNAL parameter types
+    // (TextTranslationInfo, IReadOnlyTextTranslationCache, UntranslatedTextInfo,
+    // ParserTranslationContext) with optional default values - a pattern that
+    // breaks MonoMod's IL injection on .NET 6+/Unity 6 IL2CPP.
+    // SkillMergeIndex still builds at startup; the active translation hook will
+    // need to target a different, simpler method (e.g. UILabel.set_text Postfix).
     #endregion
+
 }

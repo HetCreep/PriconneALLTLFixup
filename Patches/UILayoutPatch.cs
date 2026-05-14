@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using Elements;
 using HarmonyLib;
@@ -151,8 +151,9 @@ public static class UILayoutPatch
         var materialLabel = __instance.howtoGetUnitMaterialButton?.GetChildUILabel();
         if (materialLabel.IsSafe())
         {
-            materialLabel!.multiLine  = false;
-            materialLabel.lineWidth   = 180;
+            materialLabel!.multiLine     = false;
+            materialLabel.lineWidth      = 180;
+            materialLabel.overflowMethod = UILabel.Overflow.ShrinkContent; // scale down for long translations
         }
 
         var rarityLabel = __instance.rarityUpButton?.GetChildUILabel();
@@ -600,10 +601,18 @@ public static class UILayoutPatch
     public static void PostfixSettingsButton(ViewMenuTop __instance)
     {
         if (!__instance.IsSafe()) return;
+        // Widen button labels to at least the English-era minimums, then let ShrinkContent
+        // scale the font down if a longer translation (German, Vietnamese, etc.) overflows.
         if (__instance.systemButton.IsSafe())
-            __instance.systemButton!.GetChildUILabel().lineWidth = 115;
+        {
+            var lbl = __instance.systemButton!.GetChildUILabel();
+            if (lbl.IsSafe()) { lbl!.lineWidth = 115; lbl.overflowMethod = UILabel.Overflow.ShrinkContent; }
+        }
         if (__instance.cartoonButton.IsSafe())
-            __instance.cartoonButton!.GetChildUILabel().lineWidth = 190;
+        {
+            var lbl = __instance.cartoonButton!.GetChildUILabel();
+            if (lbl.IsSafe()) { lbl!.lineWidth = 190; lbl.overflowMethod = UILabel.Overflow.ShrinkContent; }
+        }
     }
 
     // ── 8.2 Gold Shop jewel-type label (PartsGoldShopPlate) ──────────────────
@@ -703,7 +712,8 @@ public static class UILayoutPatch
         var label = go!.GetComponent<CustomUILabel>();
         if (!label.IsSafe()) return;
 
-        label!.lineWidth = 180;
+        label!.lineWidth     = 180;
+        label.overflowMethod = UILabel.Overflow.ShrinkContent; // badge has fixed physical size
         var lp = go.transform.localPosition;
         lp.x = 3.4f;
         go.transform.localPosition = lp;
@@ -770,37 +780,26 @@ public static class UILayoutPatch
         return false;
     }
 
-    /// <summary>Adjusts underline width to match the rendered title including CJK/Latin mix.</summary>
+    /// <summary>Adjusts underline width to match the rendered title for any script.</summary>
     private static void FitUnderline(PartsHeaderBackButton btn)
     {
         if (!btn.titleLabel2nd.IsSafe()) return;
         var label = btn.titleLabel2nd!;
+        int offset = btn.backButton == null ? 50 : 0;
 
-        // Use character-range detection: if any character is outside ASCII/Latin-Extended,
-        // treat the text as containing CJK or other non-Latin script.
-        bool hasNonLatin = label.text.Any(c => c > '\u02AF');
+        // Delegate width measurement to NGUI's own layout engine.
+        // ProcessText() handles Latin, CJK, Thai, Arabic, Hebrew, and all mixed-script
+        // combinations using the actual loaded font metrics \u2014 no per-script estimation needed.
+        label.ProcessText();
+        float w = label.mCalculatedSize.x > 0f
+            ? label.mCalculatedSize.x + 20f + offset
+            : (label.text.Length * label.fontSize * 0.75f) + 60f; // fallback: pre-render estimate
 
-        if (!hasNonLatin)
-        {
-            label.ProcessText();
-            int offset = btn.backButton == null ? 50 : 0;
-            float w = label.mCalculatedSize.x + 20f + offset;
-            btn.underLine.width = (int)System.Math.Round(w);
-            var hdr = SingletonMonoBehaviour<HeaderController>.Instance;
-            hdr?.campaignIcons.SetIconPosition(hdr.viewManager.CurrentViewId, w);
-            return;
-        }
-
-        // CJK mixed: count non-ASCII chars and estimate proportional widths
-        var matches = System.Text.RegularExpressions.Regex.Matches(label.text, "[a-zA-Z0-9]");
-        int asciiCount    = matches.Count;
-        int nonAsciiCount = label.text.Length - asciiCount;
-        int fs  = label.fontSize;
-        int fsN = (int)System.Math.Ceiling(fs * 0.75);
-        int w2  = btn.titleLabel.text.Length * btn.titleLabel.fontSize
-                + nonAsciiCount * fs + asciiCount * fsN;
-        btn.underLine.width = btn.leftOffset + w2 + btn.rightOffset;
+        btn.underLine.width = (int)System.Math.Round(w);
         btn.underLine.gameObject.SetActive(true);
+
+        var hdr = SingletonMonoBehaviour<HeaderController>.Instance;
+        hdr?.campaignIcons.SetIconPosition(hdr.viewManager.CurrentViewId, w);
     }
 
     private static IEnumerator WaitForTitleTranslation(
@@ -810,8 +809,13 @@ public static class UILayoutPatch
         while (wait.keepWaiting) yield return null;
 
         if (!label.IsSafe()) yield break;
-        bool hasNonLatin = label!.text.Any(c => c > '\u02AF');
-        if (hasNonLatin) yield break; // Japanese/CJK — skip resize
+        // Skip only when text is still untranslated Japanese — NOT for Thai, Arabic,
+        // Hebrew, or any other non-Latin translation.  The old hasNonLatin guard
+        // silently abandoned underline-resize for every non-Latin translated script.
+        bool stillJapanese = label!.text.Any(c =>
+            (c >= '\u3040' && c <= '\u30FF') ||  // Hiragana + Katakana
+            (c >= '\u4E00' && c <= '\u9FFF'));    // CJK Unified Ideographs
+        if (stillJapanese) yield break;
 
         label.ProcessText();
         float w = label.mCalculatedSize.x + 20f + offset;

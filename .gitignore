@@ -1,0 +1,32 @@
+################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+desktop.ini
+.DS_Store
+
+# DLL Filter
+*.dll
+!/libs/
+!/libs/**/*.dll
+
+# AI Agent Skills & Configs (local-only)
+.agents/
+skills-lock.json
+.rtk/
+.claude/
+.windsurf/
+.cursor/
+.clinerules/
+.opencode/
+CLAUDE.md
+install_caveman.ps1
+AGENTS.md
+MEMORY.md

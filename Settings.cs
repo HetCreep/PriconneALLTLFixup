@@ -148,12 +148,6 @@ public static class ConfigManager
             "Loads regex translation patterns from XUAT text files at startup for skill effect translation.",
             typeof(Patches.SkillMergeIndexPatch));
 
-        /// <summary>Enables direct UILabel.set_text hook for skill effect translation.</summary>
-        public static readonly PatchToggleSetting SkillEffectTranslate = new(
-            S, "EnableSkillEffectTranslate", true,
-            "Hooks UILabel.set_text to apply regex-based skill effect translations directly, bypassing XUAT cache.",
-            typeof(Patches.SkillMergeSetTextPatch));
-
         /// <summary>Enables all general UI layout correction patches.</summary>
         public static readonly PatchToggleSetting UILayout = new(
             S, "EnableUILayout", true,

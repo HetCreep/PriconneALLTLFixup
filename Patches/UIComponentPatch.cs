@@ -250,7 +250,12 @@ public static class UIComponentPatch
         string clean = _setTitleText.Sanitize().Replace("\n", " ");
         if (__instance.titleLabel2nd != null) __instance.titleLabel2nd.text = clean;
 
-        float initialWidth = (clean.Length * __instance.titleLabel2nd.fontSize * 0.75f) + 60f;
+        // Use NGUI's own layout engine for the initial width — handles all scripts correctly.
+        // Fall back to the original English-era estimate only when ProcessText hasn't fired yet.
+        __instance.titleLabel2nd.ProcessText();
+        float initialWidth = __instance.titleLabel2nd.mCalculatedSize.x > 0f
+            ? __instance.titleLabel2nd.mCalculatedSize.x + 40f
+            : (clean.Length * __instance.titleLabel2nd.fontSize * 0.75f) + 60f;
         __instance.underLine.width = (int)initialWidth;
         __instance.underLine.gameObject.SetActive(true);
 
