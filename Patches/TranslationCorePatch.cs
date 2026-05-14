@@ -423,17 +423,22 @@ public static class TranslationCorePatch
             .FirstOrDefault(m => m.Name == "TranslateOrQueueWebJobImmediate"
                               && m.GetParameters().Length >= 9);
 
+    private static readonly List<string> _texts = new();
+    private static readonly List<UILabel> _uis = new();
+    private static long _lastTick;
+    private static long Window => 200 * TimeSpan.TicksPerMillisecond;
+
     /// <summary>
     /// When XUAT polls a UILabel with empty text (re-translation pass), native game code
     /// has already set the label text before XUAT could intercept. Read the label directly,
-    /// strip any \n (multi-line effects joined by game), and re-queue for XUAT's regex lookup.
+    /// strip any \n (multi-line effects joined by game), and re-queue.
     /// Works for both single-effect (no \n) and multi-effect (\n-joined) skill labels.
     /// </summary>
     [HarmonyPatch(typeof(AutoTranslationPlugin), "TranslateOrQueueWebJobImmediate")]
     [HarmonyPrefix]
-    [HarmonyWrapSafe]
-    public static void PrefixSkillTranslationFix(
+    public static bool PrefixSkillTranslationFix(
         AutoTranslationPlugin __instance,
+        ref string __result,
         object ui,
         string text,
         int scope,
@@ -444,24 +449,79 @@ public static class TranslationCorePatch
         object untranslatedTextContext,
         object context)
     {
-        if (!string.IsNullOrWhiteSpace(text)) return;
-        bool isSettingText = info != null &&
-            (bool)(info.GetType().GetProperty("IsCurrentlySettingText")?.GetValue(info) ?? false);
-        if (isSettingText) return;
+        if (!string.IsNullOrWhiteSpace(text)) return true;
 
-        string componentText = (ui as Il2CppSystem.Object)?.TryCast<UILabel>()?.text;
-        if (string.IsNullOrWhiteSpace(componentText)) return;
-        if (IsNonJapaneseScript(componentText)) return;        // already translated
-        if (componentText.Contains('※') || componentText.Contains('[')) return;
+        var isSettingProp = info?.GetType().GetProperty("IsCurrentlySettingText");
+        bool isSettingText = isSettingProp != null && (bool)(isSettingProp.GetValue(info) ?? false);
+        if (isSettingText) return true;
+
+        var lbl = (ui as Il2CppSystem.Object)?.TryCast<UILabel>();
+        if (!lbl.IsSafe()) return true;
+
+        string componentText = lbl.text;
+        if (string.IsNullOrWhiteSpace(componentText)) return true;
+        if (IsNonJapaneseScript(componentText)) return true;
+        if (componentText.Contains('※') || componentText.Contains('[')) return true;
 
         string flat = componentText.Replace("\n", "").Trim('\u3000', '\u00A0', '\u200B', ' ', '\t');
 
-        TranslateMethod?.Invoke(__instance, new object[]
+        // 1. Single-effect match
+        if (SkillMergeIndex.Done && SkillMergeIndex.Patterns.Count > 0)
+        {
+            if (SkillMergeIndex.TryTranslate(flat, out string single))
+            {
+                FLog.Debug($"[SkillMerge] \u2713 PREFIX: {flat.Substring(0, Math.Min(40, flat.Length))}");
+                __result = single;
+                return false; // Skip XUAT — our translation wins
+            }
+
+            // 2. Multi-effect buffering
+            long now = DateTime.UtcNow.Ticks;
+            if (now - _lastTick > Window) { _texts.Clear(); _uis.Clear(); }
+            _lastTick = now;
+            
+            if (_uis.Count == 0 || !ReferenceEquals(_uis[_uis.Count - 1], lbl))
+            {
+                _texts.Add(flat); _uis.Add(lbl);
+            }
+
+            if (_texts.Count >= 2)
+            {
+                for (int s = 0; s <= _texts.Count - 2; s++)
+                {
+                    string comb = string.Concat(_texts.GetRange(s, _texts.Count - s));
+                    if (SkillMergeIndex.TryTranslate(comb, out string trans))
+                    {
+                        FLog.Debug($"[SkillMerge] \u2713 PREFIX-Combined[{s}]");
+                        
+                        // Disable XUAT hook to safely update previous labels
+                        if (isSettingProp != null) isSettingProp.SetValue(info, true);
+                        try
+                        {
+                            _uis[s].text = trans;
+                            for (int i = s + 1; i < _uis.Count; i++)
+                                if (_uis[i].IsSafe()) _uis[i].text = string.Empty;
+                        }
+                        catch { }
+                        if (isSettingProp != null) isSettingProp.SetValue(info, false);
+
+                        _texts.Clear(); _uis.Clear();
+                        __result = null; // We handled it manually
+                        return false; 
+                    }
+                }
+            }
+        }
+
+        // 3. Fall back to XUAT's own pattern engine
+        __result = (string)TranslateMethod?.Invoke(__instance, new object[]
         {
             ui, flat, scope, info,
             allowStabilizationOnTextComponent, ignoreComponentState,
             false, false, tc, untranslatedTextContext, context
         });
+
+        return false; // Skip original XUAT
     }
     #endregion
 }
