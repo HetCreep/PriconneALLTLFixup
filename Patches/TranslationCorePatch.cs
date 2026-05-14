@@ -11,7 +11,6 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
-using UnityEngine;
 using XUnity.AutoTranslator.Plugin.Core;
 using XUnity.AutoTranslator.Plugin.Core.Endpoints;
 using XUnity.AutoTranslator.Plugin.Core.Extensions;
@@ -58,24 +57,6 @@ public static class TranslationCorePatch
         return (firstSeg.Length == 3 || firstSeg.Length == 6) ? "[" + firstSeg + "]" : string.Empty;
     };
 
-    /// <summary>
-    /// Cache-scrub variant: preserves 2-segment tags (likely game-original gradients)
-    /// so the live PrefixSetText can apply them via NGUI's <c>applyGradient</c> API.
-    /// Collapses 3+ segment tags (MT-mangled) the same way as <see cref="MalformedTagEvaluator"/>.
-    /// </summary>
-    private static readonly MatchEvaluator CacheScrubEvaluator = m =>
-    {
-        string inner = m.Value.Substring(1, m.Value.Length - 2);
-        var segs = inner.Split(',');
-        if (segs.Length == 2) return m.Value;  // Preserve gradient candidates
-        string first = segs[0];
-        return (first.Length == 3 || first.Length == 6) ? "[" + first + "]" : string.Empty;
-    };
-
-    /// <summary>Tracks UILabel instance IDs we have applied gradients to,
-    /// so we can reset <c>applyGradient</c> when the same label later receives
-    /// text without a multi-segment tag.</summary>
-    private static readonly HashSet<int> _gradientedLabels = new();
     #endregion
 
     #region 2. Module A: Preprocessor & Repair (SetText)
@@ -88,33 +69,19 @@ public static class TranslationCorePatch
     [HarmonyPatch(typeof(AutoTranslationPlugin), "SetText")]
     [HarmonyPrefix]
     [HarmonyWrapSafe]
-    public static bool PrefixSetText(object ui, ref string text, string originalText)
+    public static bool PrefixSetText(ref string text, string originalText)
     {
         if (_isTranslationSuppressed) return false;
         if (string.IsNullOrEmpty(originalText) || string.IsNullOrEmpty(text) || text == originalText) return true;
 
         text = text.Sanitize();
 
-        // Multi-segment bracket tags: game-original 2-color gradients (e.g. [f374ff,95289f])
-        // and MT-mangled tags (e.g. [FF7C4E,D62,146]) both match. We prefer applying the game's
-        // intended gradient via NGUI's own <c>applyGradient</c> field — this matches the JP
-        // rendering exactly and works regardless of font/shader. When the tag isn't a leading
-        // 2-segment gradient (inline, 3+ segments, or invalid hex), we collapse to a single-
-        // color tag using the first hex segment via MalformedTagEvaluator.
+        // Collapse multi-segment bracket tags to a single-color tag using the first hex
+        // segment. Preserves the game's intended hue when present (e.g. [f374ff,95289f]
+        // → [f374ff]) and drops entirely when the first segment isn't a valid hex length.
         // Not a repair feature — must run regardless of TranslationRepair setting.
         if (MalformedNguiTagRegex.IsMatch(text))
-        {
-            if (!TryApplyNguiGradient(ui, ref text))
-                text = MalformedNguiTagRegex.Replace(text, MalformedTagEvaluator);
-        }
-        else
-        {
-            // No multi-segment tag — if this label previously had our gradient applied,
-            // reset it so the gradient doesn't bleed into the new (single- or no-color) text.
-            var clearLbl = (ui as Il2CppSystem.Object)?.TryCast<UILabel>();
-            if (clearLbl.IsSafe() && _gradientedLabels.Remove(clearLbl!.GetInstanceID()))
-                try { clearLbl.applyGradient = false; } catch { }
-        }
+            text = MalformedNguiTagRegex.Replace(text, MalformedTagEvaluator);
 
         if (!ConfigManager.Translation.TranslationRepair.Value) return true;
 
@@ -353,7 +320,7 @@ public static class TranslationCorePatch
             {
                 if (entry is string sval && MalformedNguiTagRegex.IsMatch(sval))
                 {
-                    dict[key] = MalformedNguiTagRegex.Replace(sval, CacheScrubEvaluator);
+                    dict[key] = MalformedNguiTagRegex.Replace(sval, MalformedTagEvaluator);
                     count++;
                 }
             }
@@ -364,7 +331,7 @@ public static class TranslationCorePatch
                     var tp = entry.GetType().GetProperty("Translation", _bf);
                     if (tp?.GetValue(entry) is string tv && MalformedNguiTagRegex.IsMatch(tv))
                     {
-                        tp.SetValue(entry, MalformedNguiTagRegex.Replace(tv, CacheScrubEvaluator));
+                        tp.SetValue(entry, MalformedNguiTagRegex.Replace(tv, MalformedTagEvaluator));
                         count++;
                     }
                 }
@@ -504,72 +471,4 @@ public static class TranslationCorePatch
     // need to target a different, simpler method (e.g. UILabel.set_text Postfix).
     #endregion
 
-    #region 8. Module G: NGUI Gradient Application
-    /// <summary>
-    /// Applies a 2-color gradient to the UILabel via NGUI's built-in <c>applyGradient</c>
-    /// API, then strips the multi-segment tag from the text. This matches the game's
-    /// JP rendering exactly because gradient is generated through vertex tinting, not
-    /// through a bracket-parsing shader — so it works regardless of which font XUAT
-    /// swaps in for the translated locale.
-    /// Conditions for application:
-    ///   - <paramref name="ui"/> casts to <see cref="UILabel"/>
-    ///   - tag is at index 0 of <paramref name="text"/> (leading, applies to whole label)
-    ///   - exactly 2 comma-separated segments (gradient = top + bottom)
-    ///   - both segments parse as valid 3- or 6-char hex
-    /// Returns <c>false</c> if any condition fails, letting <c>PrefixSetText</c> fall
-    /// back to the single-color collapse via <see cref="MalformedTagEvaluator"/>.
-    /// </summary>
-    private static bool TryApplyNguiGradient(object ui, ref string text)
-    {
-        var lbl = (ui as Il2CppSystem.Object)?.TryCast<UILabel>();
-        if (!lbl.IsSafe()) return false;
-
-        var m = MalformedNguiTagRegex.Match(text);
-        if (!m.Success || m.Index != 0) return false;  // require leading tag
-
-        string inner = m.Value.Substring(1, m.Value.Length - 2);
-        var segs = inner.Split(',');
-        if (segs.Length != 2) return false;
-        if (!TryParseHex(segs[0], out Color top))    return false;
-        if (!TryParseHex(segs[1], out Color bottom)) return false;
-
-        try
-        {
-            lbl!.applyGradient   = true;
-            lbl.gradientTop      = top;
-            lbl.gradientBottom   = bottom;
-            _gradientedLabels.Add(lbl.GetInstanceID());
-        }
-        catch (Exception ex)
-        {
-            FLog.Debug($"[Gradient] Apply failed: {ex.Message}");
-            return false;
-        }
-
-        // Strip leading tag; also strip trailing NGUI close [-] so the label content is plain text.
-        text = text.Substring(m.Length);
-        if (text.EndsWith("[-]"))
-            text = text.Substring(0, text.Length - 3);
-        return true;
-    }
-
-    /// <summary>
-    /// Parses a 3- or 6-char hex color string into a <see cref="Color"/>.
-    /// 3-char form is expanded RGB→RRGGBB (e.g. <c>F0A</c> → <c>FF00AA</c>).
-    /// </summary>
-    private static bool TryParseHex(string hex, out Color color)
-    {
-        color = Color.white;
-        string h = hex;
-        if (h.Length == 3)
-            h = string.Concat(h[0], h[0], h[1], h[1], h[2], h[2]);
-        if (h.Length != 6) return false;
-        var ns = System.Globalization.NumberStyles.HexNumber;
-        if (!int.TryParse(h.Substring(0, 2), ns, null, out int r)) return false;
-        if (!int.TryParse(h.Substring(2, 2), ns, null, out int g)) return false;
-        if (!int.TryParse(h.Substring(4, 2), ns, null, out int b)) return false;
-        color = new Color(r / 255f, g / 255f, b / 255f);
-        return true;
-    }
-    #endregion
 }
