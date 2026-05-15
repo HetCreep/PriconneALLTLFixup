@@ -177,10 +177,10 @@ All patch toggles support **live hot-reload** — changes take effect immediatel
 
 | Module | Class | Trigger | Toggle |
 | :--- | :--- | :--- | :---: |
-| **Translation Repair** | `TranslationCorePatch` | `AutoTranslationPlugin::SetText` (Prefix)<br>+ `LoadTranslations` (Postfix cache scrub) | `EnableTranslationRepair` |
+| **Translation Repair** | `TranslationCorePatch` | `AutoTranslationPlugin::SetText` (Prefix — Levenshtein tag repair + multi-segment NGUI tag collapse)<br>+ `LoadTranslations` (Postfix — cache scrub) | `EnableTranslationRepair` |
 | **Text Safety Guard** | `TextSafetyPatch` | `TextTranslationInfo::ResizeUI`<br>(Prefix) | `EnableStabilityGuard` |
 | **XUAT Bridge &<br>Universal Gate** | `EngineBridgePatch` | `AutoTranslationPlugin::Initialize`<br>(Prefix+Postfix)<br>— removes ASCII filter | `EnableTranslatorSync` |
-| **Number Formatting** | `NumberComponentPatch` | `UILabel` setter,<br>`CustomUILabel::SetText` | `EnableNumberFormatting` |
+| **Number Formatting** | `NumberComponentPatch` | `UILabel::text` setter,<br>`CustomUILabel::SetText`,<br>`AutoTranslationPlugin::SetText` (bracket-aware: never formats digits inside `[…]` hex colour tags) | `EnableNumberFormatting` |
 | **UI Style, Font &<br>Load Guard** | `UIComponentPatch` | `CustomUILabel::Awake`<br>`UILabel::ProcessText`<br>`TextMesh::text`<br>`FlTextParameter::_ApplyData` | `EnableFontReplacement`<br>/ `EnableUIResizer` |
 | **Skill Layout** | `TextRegistryPatch` | `ConstTextData::`<br>`CreateInstanceAndLoadInitialize`<br>`PartsUnitSkillDetailTextController::`<br>`Initialize` | `EnableSmartSkillLayout` |
 | **UI Layout** | `UILayoutPatch` | 30+ hooks across menus, shops,<br>battle overlays, profile cards | `EnableUILayout` |

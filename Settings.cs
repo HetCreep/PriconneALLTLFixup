@@ -120,8 +120,9 @@ public static class ConfigManager
             S, "EnableTranslationRepair", true,
             "Repairs corrupted color/gradient/size Rich Text tags introduced by machine translation. " +
             "Uses Fastenshtein Levenshtein-distance fuzzy matching for tag recovery. " +
-            "Also strips stray TMPro <color>/<size> tags that translation engines may inject into NGUI labels, " +
-            "preventing literal '</color>' text from appearing in the game UI.",
+            "Collapses MT-mangled multi-segment NGUI tags (e.g. [FF7C4E,D62,146]) to a single-color " +
+            "tag preserving the first hex. Also strips stray TMPro <color>/<size> tags injected into " +
+            "NGUI labels and scrubs the XUAT translation cache on load.",
             typeof(Patches.TranslationCorePatch));
     }
     #endregion
@@ -210,7 +211,9 @@ public static class ConfigManager
         public static readonly PatchToggleSetting UINumbers = new(
             S, "EnableNumberFormatting", true,
             "Injects culture-aware thousands separators (e.g. '1,234,567') across the entire game UI: " +
-            "HP gauges, damage numbers, currency, and rankings. LRU-cached for O(1) hot-path performance.",
+            "HP gauges, damage numbers, currency, and rankings. Skips digit runs inside NGUI bracket " +
+            "tags so hex colour codes like [FF7C4E,D62146] stay intact. LRU-cached for O(1) hot-path " +
+            "performance.",
             typeof(Patches.NumberComponentPatch));
 
         /// <summary>Enables story color-code stripping for translated scripts.</summary>

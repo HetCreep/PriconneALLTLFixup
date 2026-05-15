@@ -37,11 +37,12 @@ public static class TranslationCorePatch
     // Matches multi-segment NGUI bracket tags such as game-original gradients
     // (e.g. [f374ff,95289f]) and MT-mangled fragments (e.g. [FF7C4E,D62,146]).
     // Valid single-color NGUI tags ([RRGGBB], [F00], [-]) do not contain commas
-    // and are intentionally not matched.
-    // First segment kept at {3,6} to require a real-looking hex anchor; subsequent
-    // segments allow {1,6} because MT engines often truncate or pad them.
+    // and are intentionally not matched. All segments required 3-6 hex chars
+    // (matches valid NGUI color codes); MT can pad odd lengths but those are rare
+    // and stripping them risks breaking labels whose values have nothing to do with
+    // colors (e.g. Battle Arena Power values via NumberComponentPatch's gradient flow).
     private static readonly Regex MalformedNguiTagRegex = new(
-        @"\[[0-9A-Fa-f]{3,6}(?:,[0-9A-Fa-f]{1,6})+\]", RegexOptions.Compiled);
+        @"\[[0-9A-Fa-f]{3,6}(?:,[0-9A-Fa-f]{3,6})+\]", RegexOptions.Compiled);
 
     /// <summary>
     /// Fallback collapse used when the live UILabel reference is unavailable (cache
@@ -212,6 +213,7 @@ public static class TranslationCorePatch
 
     [HarmonyPatch(typeof(LoadIndexReceiveParam), "ParseLoadIndexReceiveParam")]
     [HarmonyPostfix]
+    [HarmonyWrapSafe]
     public static void PostfixPartyDetection(LoadIndexReceiveParam __instance)
     {
         if (!__instance.IsSafe() || __instance.UserMyParty == null || __instance.UserMyParty.Count == 0) return;
@@ -426,49 +428,4 @@ public static class TranslationCorePatch
         }
     }
     #endregion
-
-    #region 6. Module E: Script Detection Helpers
-
-    /// <summary>
-    /// Returns <c>true</c> when <paramref name="text"/> consists entirely of characters
-    /// outside the Japanese/CJK Unicode blocks — indicating the text is likely already
-    /// translated and does not need to be queued again.
-    /// Replaces the legacy <c>IsEnglish()</c> ASCII-only check to support every locale.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsNonJapaneseScript(string text)
-    {
-        foreach (char c in text)
-        {
-            // Hiragana, Katakana, CJK Unified Ideographs → still Japanese
-            if ((c >= '\u3040' && c <= '\u30FF') || (c >= '\u4E00' && c <= '\u9FFF'))
-                return false;
-        }
-        return true;
-    }
-    #endregion
-
-    #region 5. Module D: Skill Effect Translation Fix (ported from PriconneSkillTLFixup by Olegase)
-    private static MethodInfo _translateMethod;
-    private static MethodInfo TranslateMethod => _translateMethod ??=
-        typeof(AutoTranslationPlugin)
-            .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-            .FirstOrDefault(m => m.Name == "TranslateOrQueueWebJobImmediate"
-                              && m.GetParameters().Length >= 9);
-
-    private static readonly List<string> _texts = new();
-    private static readonly List<UILabel> _uis = new();
-    private static long _lastTick;
-    private static long Window => 200 * TimeSpan.TicksPerMillisecond;
-
-    // NOTE: Previously hooked AutoTranslationPlugin.TranslateOrQueueWebJobImmediate
-    // (Prefix). MonoMod failed to JIT-compile the patched method (Fatal CLR error
-    // 0x80131506) because that target combines INTERNAL parameter types
-    // (TextTranslationInfo, IReadOnlyTextTranslationCache, UntranslatedTextInfo,
-    // ParserTranslationContext) with optional default values - a pattern that
-    // breaks MonoMod's IL injection on .NET 6+/Unity 6 IL2CPP.
-    // SkillMergeIndex still builds at startup; the active translation hook will
-    // need to target a different, simpler method (e.g. UILabel.set_text Postfix).
-    #endregion
-
 }

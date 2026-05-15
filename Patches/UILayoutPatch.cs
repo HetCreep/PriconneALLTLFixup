@@ -51,15 +51,34 @@ public static class UILayoutPatch
         if (!__instance.IsSafe()) return;
 
         var labels = __instance.GetComponentsInChildren<CustomUILabel>();
+        int modified = 0, skipped = 0;
         foreach (var lb in labels)
         {
             if (!lb.IsSafe()) continue;
+
+            // Skip value-type labels (Power Party 1/2/3 numbers, ranks, dates etc.) —
+            // their layout is right-pivoted by design, and forcing pivot=Center shifts
+            // the rendered text out of the clip region, leaving the label invisible
+            // on first open until the dialog is re-opened. We detect them by the
+            // absence of script letters; empty labels are skipped too because they
+            // typically get a numeric value populated later by NumberComponentPatch.
+            string txt = lb.text ?? string.Empty;
+            bool hasLetters = false;
+            foreach (char c in txt)
+            {
+                if (char.IsLetter(c)) { hasLetters = true; break; }
+            }
+            if (!hasLetters) { skipped++; continue; }
 
             lb.overflowMethod = UILabel.Overflow.ShrinkContent;
             lb.pivot = UIWidget.Pivot.Center;
 
             if (lb.lineWidth > 0) lb.lineWidth += 20;
+            modified++;
         }
+
+        if (FLog.IsDeveloperContext)
+            FLog.Debug($"[UserProfile] Resized {modified} text labels, skipped {skipped} value labels");
     }
 
     [HarmonyPatch(typeof(PartsDialogAbyssBossResult), "StartShow")]

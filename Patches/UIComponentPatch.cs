@@ -190,6 +190,7 @@ public static class UIComponentPatch
     #region 3. Module A: Universal UI Handler (NGUI)
     [HarmonyPatch(typeof(CustomUILabel), nameof(CustomUILabel.Awake))]
     [HarmonyPrefix]
+    [HarmonyWrapSafe]
     public static void PrefixNGUIAwake(CustomUILabel __instance)
     {
         if (!_initialized) Initialize();
@@ -198,6 +199,7 @@ public static class UIComponentPatch
 
     [HarmonyPatch(typeof(UILabel), nameof(UILabel.ProcessText), new[] { typeof(bool), typeof(bool) })]
     [HarmonyPostfix]
+    [HarmonyWrapSafe]
     public static void PostfixNGUIProcess(UILabel __instance)
     {
         if (__instance is CustomUILabel custom && custom.IsSafe())
@@ -242,6 +244,7 @@ public static class UIComponentPatch
     #region 4. Module B: Header & Integrity (Always On)
     [HarmonyPatch(typeof(PartsHeaderBackButton), "SetTitleText")]
     [HarmonyPrefix]
+    [HarmonyWrapSafe]
     public static bool PrefixHeaderTitle(PartsHeaderBackButton __instance, string _setTitleText)
     {
         if (string.IsNullOrEmpty(_setTitleText) || !__instance.IsSafe()) return true;
@@ -324,6 +327,7 @@ public static class UIComponentPatch
     #region 5. Module C: Legacy & Flash Support
     [HarmonyPatch(typeof(TextMesh), nameof(TextMesh.text), MethodType.Setter)]
     [HarmonyPostfix]
+    [HarmonyWrapSafe]
     public static void PostfixTextMesh(TextMesh __instance)
     {
         if (_resizeInProgress || !__instance.IsSafe() || !_initialized) return;
@@ -349,6 +353,7 @@ public static class UIComponentPatch
 
     [HarmonyPatch(typeof(FlTextParameter), "_ApplyData")]
     [HarmonyPostfix]
+    [HarmonyWrapSafe]
     public static void PostfixFlashSize(FlTextParameter __instance)
     {
         if (ConfigManager.Visual.UIUniversal.Value && __instance.IsSafe() && __instance._fontSize == 24)
@@ -431,6 +436,7 @@ public static class UIComponentPatch
 
     [HarmonyPatch(typeof(SceneManager), nameof(SceneManager.Internal_SceneLoaded))]
     [HarmonyPostfix]
+    [HarmonyWrapSafe]
     public static void ClearCaches()
     {
         lock (_uiLock)
