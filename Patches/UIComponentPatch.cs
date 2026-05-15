@@ -208,6 +208,7 @@ public static class UIComponentPatch
 
     private static void ApplyNGUIStyle(CustomUILabel label)
     {
+        if (!label.IsSafe() || !label.transform.IsSafe()) return;
         string path = label.transform.GetHierarchyPath();
 
         if (ConfigManager.Visual.UIFont.Value && _fontSystemReady)

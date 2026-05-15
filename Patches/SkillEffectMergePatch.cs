@@ -11,10 +11,22 @@ using XUnity.AutoTranslator.Plugin.Core;
 namespace PriconneALLTLFixup.Patches;
 
 // ── Shared state ──────────────────────────────────────────────────────────────
+/// <summary>
+/// Static, built-once-at-startup index of regex translation patterns sourced from
+/// the active language's XUAT text files. Currently built but not consumed (the
+/// runtime hook was removed when MonoMod's JIT could not handle the original
+/// <c>TranslateOrQueueWebJobImmediate</c> target on .NET 6 / Unity 6 IL2CPP).
+/// Re-enable a consumer at a simpler hook point (e.g. a <c>UILabel.text</c>
+/// setter Postfix gated on <see cref="Done"/>).
+/// </summary>
 public static class SkillMergeIndex
 {
+    /// <summary>Compiled regex patterns and their replacement templates.</summary>
     public static readonly List<(Regex rx, string tpl)> Patterns = new();
-    public static bool Done;
+
+    /// <summary><c>volatile</c> so the build-completion flag is observed correctly
+    /// from threads other than the one that ran <see cref="Build"/>.</summary>
+    public static volatile bool Done;
 
     private static readonly Regex NgTag = new(@"\[(?:[^\]]{0,20})\]", RegexOptions.Compiled);
 

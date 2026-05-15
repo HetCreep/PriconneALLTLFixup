@@ -79,17 +79,11 @@ public static class TextRegistryPatch
     }
     #endregion
 
-    #region 3. Module B: Skill Init (Disabled — IL2CPP List<ValueTuple> unsafe)
-    // ALL IL2CPP List<ValueTuple<enum,string>> access patterns crash natively.
-    // get_Item[i] → managed exception  |  foreach/ToArray/Clear/Add → native crash
-    // Skill translation handled by PrefixSkillTranslationFix in TranslationCorePatch.
-    [HarmonyPatch(typeof(PartsUnitSkillDetailTextController), nameof(PartsUnitSkillDetailTextController.Initialize))]
-    [HarmonyPrefix]
-    [HarmonyWrapSafe]
-    public static void PrefixSkillInit(
-        Il2CppSystem.Collections.Generic.List<ValueTuple<PartsUnitSkillDetailTextPlate.ePlateType, string>> _detailTextList)
-        => _ = _detailTextList; // intentional no-op
-    #endregion
+    // NOTE: A Module B "Skill Init" prefix used to be registered here as a no-op
+    // (IL2CPP List<ValueTuple<enum,string>> is unsafe to enumerate). The empty hook
+    // still cost a MonoMod trampoline at startup, so it was removed entirely. If
+    // skill-detail interception is needed again, target a different method whose
+    // signature doesn't pass an IL2CPP ValueTuple list.
 
     #region 4. Registry Control API
     public static void ClearCache()

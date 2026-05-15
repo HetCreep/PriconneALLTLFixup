@@ -133,6 +133,7 @@ public static class WindowSystemPatch
 
     [HarmonyPatch(typeof(StandaloneWindowResize), "getOptimizedWindowSize")]
     [HarmonyPrefix]
+    [HarmonyWrapSafe]
     public static bool PrefixGetSize(StandaloneWindowResize __instance, ref Vector3 __result, int _width, int _height)
     {
         if (!ConfigManager.Core.SystemIntegration.Value) return true;
@@ -146,6 +147,7 @@ public static class WindowSystemPatch
 
     [HarmonyPatch(typeof(StandaloneWindowResize), "DisableMaximizebox")]
     [HarmonyPrefix]
+    [HarmonyWrapSafe]
     public static bool PrefixDisableMaximize() => !ConfigManager.Core.SystemIntegration.Value;
     #endregion
 

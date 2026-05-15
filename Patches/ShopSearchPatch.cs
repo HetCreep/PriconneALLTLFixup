@@ -195,6 +195,13 @@ public static class ShopSearchPatch
         return null;
     }
 
+    /// <summary>
+    /// Reflectively reads a property or field of type <typeparamref name="T"/> from
+    /// <paramref name="obj"/>. Returns <c>null</c> when the member is missing or the
+    /// underlying access throws — the failure is logged via <see cref="FLog.Debug"/>
+    /// (developer-only) so reflection mismatches surface without being noisy in
+    /// production.
+    /// </summary>
     private static T? TryGetProperty<T>(object obj, string name) where T : class
     {
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
@@ -202,6 +209,12 @@ public static class ShopSearchPatch
         {
             var member = obj.GetType().GetProperty(name, flags)
                          ?? (MemberInfo?)obj.GetType().GetField(name, flags);
+            if (member == null)
+            {
+                if (FLog.IsDeveloperContext)
+                    FLog.Debug($"[Shop] Member '{name}' not found on '{obj.GetType().Name}'.");
+                return null;
+            }
             return member switch
             {
                 PropertyInfo p => p.GetValue(obj) as T,
@@ -209,7 +222,12 @@ public static class ShopSearchPatch
                 _              => null
             };
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            if (FLog.IsDeveloperContext)
+                FLog.Debug($"[Shop] Reflective access to '{name}' on '{obj.GetType().Name}' threw: {ex.Message}");
+            return null;
+        }
     }
     #endregion
 

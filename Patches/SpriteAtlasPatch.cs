@@ -3,6 +3,7 @@ using BepInEx;
 using Cute;
 using HarmonyLib;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -33,14 +34,17 @@ public static class SpriteAtlasPatch
     /// <summary>Render queue value that places fixup sprites above opaque but below particles.</summary>
     private const int AtlasRenderQueue = 3054;
 
-    /// <summary>Map of atlas base-name → loaded fixup <see cref="UIAtlas"/>.</summary>
-    public static readonly Dictionary<string, UIAtlas> Atlases         = new(64);
+    /// <summary>Map of atlas base-name → loaded fixup <see cref="UIAtlas"/>.
+    /// ConcurrentDictionary because <c>UISprite.spriteName</c> setter fires from
+    /// any thread that mutates a sprite (e.g. animation callbacks).</summary>
+    public static readonly ConcurrentDictionary<string, UIAtlas> Atlases         = new();
 
     /// <summary>Map of atlas base-name → original game <see cref="UIAtlas"/> (populated by Module C).</summary>
-    public static readonly Dictionary<string, UIAtlas> OriginalAtlases = new(64);
+    public static readonly ConcurrentDictionary<string, UIAtlas> OriginalAtlases = new();
 
-    /// <summary>Set of atlas names already dumped this session (Module B).</summary>
-    private static readonly HashSet<string> _dumpedAtlases = new(64);
+    /// <summary>Set of atlas names already dumped this session (Module B).
+    /// Wrapped as a concurrent set via <see cref="ConcurrentDictionary{TKey,TValue}"/>.</summary>
+    private static readonly ConcurrentDictionary<string, byte> _dumpedAtlases = new();
 
     private static string AtlasPath => Path.Join(
         Paths.BepInExRootPath, "Translation",
@@ -220,8 +224,8 @@ public static class SpriteAtlasPatch
         if (!ConfigManager.Visual.EnableTextureDumping.Value) return;
 
         // Skip already-dumped, already-loaded fixup atlases, and game atlases bearing the fixup suffix
-        if (_dumpedAtlases.Contains(atlas!.name)
-         || Atlases.ContainsValue(atlas)
+        if (_dumpedAtlases.ContainsKey(atlas!.name)
+         || Atlases.Values.Contains(atlas)
          || atlas.name.Contains(FixupSuffix)) return;
 
         string dumpPath = string.IsNullOrWhiteSpace(ConfigManager.Visual.TexturesDumpPath.Value)
@@ -238,7 +242,7 @@ public static class SpriteAtlasPatch
             string json     = JsonUtility.ToJson(atlas);
             string filePath = Path.Join(dumpPath, atlas.name + ".json");
             File.WriteAllText(filePath, json);
-            _dumpedAtlases.Add(atlas.name);
+            _dumpedAtlases.TryAdd(atlas.name, 0);
             FLog.Debug($"[Atlas] Dumped atlas '{atlas.name}' to {filePath}.");
         }
         catch (Exception ex)

@@ -4,6 +4,7 @@ using HarmonyLib;
 using Il2CppInterop.Runtime;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
@@ -17,8 +18,6 @@ namespace PriconneALLTLFixup.Patches;
 public static class NumberComponentPatch
 {
     #region 1. Internal State & Dynamic Culture Cache
-    private static readonly object _syncLock = new object();
-
     private static CultureInfo?  _cachedCulture;
     private static volatile string? _lastLangCode;
 
@@ -47,7 +46,10 @@ public static class NumberComponentPatch
         }
     }
 
-    private static readonly Dictionary<IntPtr, long> _labelValueRegistry = new(1024);
+    // ConcurrentDictionary: written from CustomUILabel.SetText prefix and read from
+    // its postfix; coroutines / animation callbacks can fire these on background
+    // threads, so plain Dictionary access risks bucket-resize corruption.
+    private static readonly ConcurrentDictionary<IntPtr, long> _labelValueRegistry = new();
 
     private static readonly Regex _numberDetectionRegex = new Regex(@"[1-9]\d{3,}", RegexOptions.Compiled);
     private static readonly Regex _dateExclusionRegex = new Regex(@"\d{2,4}[/\.\-]\d{2}[/\.\-]\d{2,4}", RegexOptions.Compiled);
@@ -230,12 +232,6 @@ public static class NumberComponentPatch
     [HarmonyPatch(typeof(SceneManagement), nameof(SceneManagement.Internal_SceneLoaded))]
     [HarmonyPostfix]
     [HarmonyWrapSafe]
-    public static void ClearCaches()
-    {
-        lock (_syncLock)
-        {
-            _labelValueRegistry.Clear();
-        }
-    }
+    public static void ClearCaches() => _labelValueRegistry.Clear();
     #endregion
 }

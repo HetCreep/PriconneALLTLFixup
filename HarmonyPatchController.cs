@@ -1,6 +1,7 @@
 using HarmonyLib;
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -13,7 +14,9 @@ public class HarmonyPatchController
     #region 1. Fields
     private readonly Harmony _harmony;
     private readonly string _namespaceFilter;
-    private readonly Dictionary<string, long> _patchProfiling = new();
+    // ConcurrentDictionary: patch profiling rows are written from the smart-batch
+    // coroutine while the property is exposed for read on any thread.
+    private readonly ConcurrentDictionary<string, long> _patchProfiling = new();
 
     private readonly List<Type> _criticalRegistry = new();
     private readonly List<Type> _featureRegistry = new();
@@ -81,7 +84,7 @@ public class HarmonyPatchController
                 if (owned)
                     _harmony.Unpatch(original, HarmonyPatchType.All, _harmony.Id);
             }
-            _patchProfiling.Remove(type.Name);
+            _patchProfiling.TryRemove(type.Name, out _);
             FLog.Debug($"[Harmony] Unpatched: {type.Name}");
         }
         catch (Exception ex) { FLog.Error($"[Harmony] Unpatch({type.Name}) failed: {ex.Message}"); }
@@ -160,7 +163,7 @@ public class HarmonyPatchController
             processor.Patch();
 
             timer.Stop();
-            _patchProfiling[type.Name] = timer.ElapsedMilliseconds;
+            _patchProfiling.AddOrUpdate(type.Name, timer.ElapsedMilliseconds, (_, _) => timer.ElapsedMilliseconds);
             if (FLog.IsDeveloperContext) FLog.Debug($"[Harmony] Applied: {type.Name}");
         }
         catch (Exception ex)
