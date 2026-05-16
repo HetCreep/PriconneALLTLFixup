@@ -1,6 +1,5 @@
 #nullable enable
 using BepInEx;
-using Cute;
 using HarmonyLib;
 using System;
 using System.Collections.Concurrent;
@@ -53,19 +52,16 @@ public static class SpriteAtlasPatch
     #endregion
 
     // =========================================================================
-    // MODULE A: Atlas Initialisation (BootApp::Start)
+    // MODULE A: Atlas Initialisation (invoked from Plugin.BootFallback)
     // =========================================================================
 
-    #region 2. Module A — Hook
+    #region 2. Module A — Init
     /// <summary>
-    /// Postfix on <c>BootApp.Start</c>: scans the translation atlas directory for
-    /// <c>*.json</c> + matching <c>*.png</c> pairs and loads them as persistent
-    /// <see cref="UIAtlas"/> objects that can substitute the game's built-in sprites.
-    /// <para>NOTE: BootApp removed in 13-May-2026 game update. Fallback invocation in Plugin.BootFallback().</para>
+    /// Scans the translation atlas directory for <c>*.json</c> + matching
+    /// <c>*.png</c> pairs and loads them as persistent <see cref="UIAtlas"/>
+    /// objects that can substitute the game's built-in sprites.
+    /// Called directly from <c>Plugin.BootFallback()</c>.
     /// </summary>
-    [HarmonyPatch(typeof(BootApp), "Start")]
-    [HarmonyPostfix]
-    [HarmonyWrapSafe]
     public static void PostfixAtlasInit()
     {
         string[] jsonFiles;

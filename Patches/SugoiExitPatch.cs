@@ -1,5 +1,4 @@
 #nullable enable
-using Cute;
 using Elements;
 using HarmonyLib;
 using SugoiOfflineTranslator;
@@ -34,12 +33,10 @@ public static class SugoiExitPatch
     }
     #endregion
 
-    #region 3. Module B: Clean Shutdown (ApplicationQuit)
-    // NOTE: Toolbox removed in 13-May-2026 game update.
-    // Fallback: Plugin.Unload() now calls PrefixApplicationQuit() directly.
-    [HarmonyPatch(typeof(Toolbox), "ApplicationQuit")]
-    [HarmonyPrefix]
-    [HarmonyWrapSafe]
+    #region 3. Module B: Clean Shutdown
+    /// <summary>
+    /// Terminates the Sugoi process. Called from <c>Plugin.Unload()</c>.
+    /// </summary>
     public static void PrefixApplicationQuit()
     {
         TerminateProcess();

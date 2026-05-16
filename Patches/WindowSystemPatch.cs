@@ -71,11 +71,10 @@ public static class WindowSystemPatch
     // =========================================================================
 
     #region 2. Module A — Hooks
-    // NOTE: BootApp removed in 13-May-2026 game update.
-    // Fallback invocation in Plugin.BootFallback().
-    [HarmonyPatch(typeof(BootApp), "Start")]
-    [HarmonyPostfix]
-    [HarmonyWrapSafe]
+    /// <summary>
+    /// Initializes display system: captures window size/position, applies Win32 chrome,
+    /// registers hotkey handler. Called from <c>Plugin.BootFallback()</c>.
+    /// </summary>
     public static void PostfixBoot()
     {
         if (!ConfigManager.Core.SystemIntegration.Value) return;

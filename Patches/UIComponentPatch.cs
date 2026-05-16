@@ -1,5 +1,4 @@
 using Elements;
-using FLATOUT.Main;
 using HarmonyLib;
 using Il2CppInterop.Runtime;
 using System;
@@ -350,18 +349,6 @@ public static class UIComponentPatch
             }
         }
         finally { _resizeInProgress = false; }
-    }
-
-    // NOTE: FlTextParameter removed in 13-May-2026 game update.
-    // PostfixTextMesh (above) already handles fontSize==24 adaptive sizing for TextMesh-based flash text.
-    // This hook is retained as a fallback — Harmony skips it silently when the type is absent.
-    [HarmonyPatch(typeof(FlTextParameter), "_ApplyData")]
-    [HarmonyPostfix]
-    [HarmonyWrapSafe]
-    public static void PostfixFlashSize(FlTextParameter __instance)
-    {
-        if (ConfigManager.Visual.UIUniversal.Value && __instance.IsSafe() && __instance._fontSize == 24)
-            __instance._fontSize = GetAdaptiveSize(24);
     }
 
     private static int GetAdaptiveSize(int originalSize)
