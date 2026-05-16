@@ -181,7 +181,7 @@ All patch toggles support **live hot-reload** — changes take effect immediatel
 | **Text Safety Guard** | `TextSafetyPatch` | `TextTranslationInfo::ResizeUI`<br>(Prefix) | `EnableStabilityGuard` |
 | **XUAT Bridge &<br>Universal Gate** | `EngineBridgePatch` | `AutoTranslationPlugin::Initialize`<br>(Prefix+Postfix)<br>— removes ASCII filter | `EnableTranslatorSync` |
 | **Number Formatting** | `NumberComponentPatch` | `UILabel::text` setter,<br>`CustomUILabel::SetText`,<br>`AutoTranslationPlugin::SetText` (bracket-aware: never formats digits inside `[…]` hex colour tags) | `EnableNumberFormatting` |
-| **UI Style, Font &<br>Load Guard** | `UIComponentPatch` | `CustomUILabel::Awake`<br>`UILabel::ProcessText`<br>`TextMesh::text`<br>`FlTextParameter::_ApplyData` | `EnableFontReplacement`<br>/ `EnableUIResizer` |
+| **UI Style, Font &<br>Load Guard** | `UIComponentPatch` | `CustomUILabel::Awake`<br>`UILabel::ProcessText`<br>`TextMesh::text` | `EnableFontReplacement`<br>/ `EnableUIResizer` |
 | **Skill Layout** | `TextRegistryPatch` | `ConstTextData::`<br>`CreateInstanceAndLoadInitialize`<br>`PartsUnitSkillDetailTextController::`<br>`Initialize` | `EnableSmartSkillLayout` |
 | **UI Layout** | `UILayoutPatch` | 30+ hooks across menus, shops,<br>battle overlays, profile cards | `EnableUILayout` |
 | **Battle Bubbles** | `UIBubblePatch` | `LifeGaugeController::`<br>`IndicateSkillName`<br>`PartsRoomBalloon::`<br>`ShowSpeakingText` | `EnableBubbleFixes` |
@@ -189,8 +189,8 @@ All patch toggles support **live hot-reload** — changes take effect immediatel
 | **Subtitle System** | `SubtitleSystemPatch` | `MovieManager::Load`<br>`SubtitleManager::Initialize`<br>`SetSubTitleText` | `EnableSubtitleFixes` |
 | **Shop Search** | `ShopSearchPatch` | `PartsShopFooter` lambda<br>`searchItemExec`<br>`GetMaterialSearchTextFormat` | `EnableMultiLangSearch` |
 | **Sprite Atlas** | `SpriteAtlasPatch` | `UIAtlas::GetSprite`<br>`UIAtlas::Init`<br>`UISprite::spriteName` | `EnableAtlasRedirect` |
-| **Window & OS** | `WindowSystemPatch` | `BootApp::Start`<br>`StandaloneWindowResize::*`<br>`WndProc` | `EnableSystemEnvironment` |
-| **Sugoi Lifecycle** | `SugoiExitPatch` | `SugoiOfflineTranslatorEndpoint::`<br>`StartProcess`<br>`Toolbox::ApplicationQuit` | `EnableSugoiCleanup` |
+| **Window & OS** | `WindowSystemPatch` | `Plugin.BootFallback()`<br>`StandaloneWindowResize::*`<br>`WndProc` | `EnableSystemEnvironment` |
+| **Sugoi Lifecycle** | `SugoiExitPatch` | `SugoiOfflineTranslatorEndpoint::`<br>`StartProcess`<br>`Plugin.Unload()` | `EnableSugoiCleanup` |
 | **Gameplay QoL** | `GameplayQoLPatch` | `UnitFilterDialogController::Open`<br>`MemoryPieceDealConfirmController` | `EnableAutoFocusSearch`<br>/ `EnableBirthdayEveryday` |
 | **Log Noise Filter** | `LogFilter` | Wraps `DiskLogListener`<br>— suppresses HarmonyX warnings | *(always active)* |
 
