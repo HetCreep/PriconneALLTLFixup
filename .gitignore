@@ -11,6 +11,11 @@
 *.sln.docstates
 desktop.ini
 .DS_Store
+*.bak
+*.backup
+*.tmp
+*.orig
+*.old
 
 # DLL Filter
 *.dll
