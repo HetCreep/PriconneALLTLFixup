@@ -54,6 +54,10 @@ public class Plugin : BasePlugin
 
             ConfigManager.SynchronizePatches(_patchController);
 
+            // Fallback: BootApp/Toolbox removed in 13-May-2026 game update.
+            // Invoke startup logic directly if Harmony hooks silently skipped.
+            BootFallback();
+
             LogExecutionSummary();
         }
         catch (Exception ex)
@@ -72,6 +76,10 @@ public class Plugin : BasePlugin
             TextRegistryPatch.ClearCache();
             UIComponentPatch.ClearCaches();
             AdaptiveTextLayoutProcessor.ClearCaches();
+
+            // Fallback: Toolbox.ApplicationQuit removed in 13-May-2026 update
+            try { SugoiExitPatch.PrefixApplicationQuit(); }
+            catch (Exception ex) { FLog.Debug($"[Teardown] Sugoi cleanup: {ex.Message}"); }
 
             // ถอดถอน Patch ทั้งหมด
             _patchController.UnpatchAll();
@@ -111,6 +119,32 @@ public class Plugin : BasePlugin
         FLog.Info($"- Modules Active: {stats.Count}");
         FLog.Info($"- Impact: {stats.Values.Sum()}ms total load time");
         FLog.Info("==================================================");
+    }
+
+    /// <summary>
+    /// Direct-invoke fallback for game types removed in the 13-May-2026 update.
+    /// If Harmony silently skipped the hooks (method-null), fire the logic from here.
+    /// Safe to call even when the hooks DID fire — both methods are idempotent.
+    /// </summary>
+    private static void BootFallback()
+    {
+        try
+        {
+            // BootApp.Start → SpriteAtlasPatch atlas init
+            SpriteAtlasPatch.PostfixAtlasInit();
+            FLog.Debug("[Fallback] SpriteAtlasPatch.PostfixAtlasInit invoked.");
+        }
+        catch (Exception ex) { FLog.Debug($"[Fallback] Atlas init: {ex.Message}"); }
+
+        try
+        {
+            // BootApp.Start → WindowSystemPatch window setup
+            WindowSystemPatch.PostfixBoot();
+            FLog.Debug("[Fallback] WindowSystemPatch.PostfixBoot invoked.");
+        }
+        catch (Exception ex) { FLog.Debug($"[Fallback] Window boot: {ex.Message}"); }
+
+        // Toolbox.ApplicationQuit fallback: Sugoi cleanup is handled via Plugin.Unload().
     }
     #endregion
 

@@ -27,12 +27,8 @@
 	     If the game is open and the DLL is locked, the copy fails with a warning
 	     (does NOT break the build). Close the game and rebuild to deploy. -->
 	<Target Name="DeployToBepInEx" AfterTargets="PostBuildEvent" Condition="'$(GITHUB_ACTIONS)' != 'true'">
-		<Copy SourceFiles="$(TargetPath)"
-		      DestinationFolder="$(BepInDir)\plugins\"
-		      OverwriteReadOnlyFiles="true"
-		      SkipUnchangedFiles="false"
-		      ContinueOnError="WarnAndContinue" />
-		<Message Text="&#x2705; [Deploy] $(AssemblyName).dll &#x2192; $(BepInDir)\plugins\" Importance="High" />
+		<Copy SourceFiles="$(TargetPath)" DestinationFolder="$(BepInDir)\plugins\" OverwriteReadOnlyFiles="true" SkipUnchangedFiles="false" ContinueOnError="WarnAndContinue" />
+		<Message Text="✅ [Deploy] $(AssemblyName).dll → $(BepInDir)\plugins\" Importance="High" />
 	</Target>
 
 	<ItemGroup>
@@ -230,6 +226,25 @@
 		<Reference Include="XUnity.ResourceRedirector">
 			<HintPath>$(BepInDir)\plugins\$(RedirectorDir)XUnity.ResourceRedirector.dll</HintPath>
 		</Reference>
+	</ItemGroup>
+
+
+	<ItemGroup>
+	  <PackageReference Include="Krafs.Publicizer" Version="2.3.0">
+	    <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+	    <PrivateAssets>all</PrivateAssets>
+	  </PackageReference>
+	</ItemGroup>
+
+	<!-- Publicize XUAT core so internal types (TextTranslationInfo,
+	     IReadOnlyTextTranslationCache, UntranslatedText, ParserTranslationContext,
+	     ComponentExtensions, TextTranslationCache) are usable as exact parameter
+	     types when patching AutoTranslationPlugin.TranslateOrQueueWebJobImmediate.
+	     Patching that method with object-typed parameters made MonoMod's JIT
+	     crash (0x80131506); exact internal types compile a clean trampoline.
+	     Krafs.Publicizer also injects the matching IgnoresAccessChecksTo. -->
+	<ItemGroup>
+	  <Publicize Include="XUnity.AutoTranslator.Plugin.Core" />
 	</ItemGroup>
 
 	<Target Name="SyncVersionBeforeBuild" BeforeTargets="PreBuildEvent" Condition="Exists('$(ProjectDir)UpdateVersion.ps1')">

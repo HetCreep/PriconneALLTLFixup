@@ -61,6 +61,7 @@ public static class SpriteAtlasPatch
     /// Postfix on <c>BootApp.Start</c>: scans the translation atlas directory for
     /// <c>*.json</c> + matching <c>*.png</c> pairs and loads them as persistent
     /// <see cref="UIAtlas"/> objects that can substitute the game's built-in sprites.
+    /// <para>NOTE: BootApp removed in 13-May-2026 game update. Fallback invocation in Plugin.BootFallback().</para>
     /// </summary>
     [HarmonyPatch(typeof(BootApp), "Start")]
     [HarmonyPostfix]

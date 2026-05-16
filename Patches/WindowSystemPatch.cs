@@ -71,6 +71,8 @@ public static class WindowSystemPatch
     // =========================================================================
 
     #region 2. Module A — Hooks
+    // NOTE: BootApp removed in 13-May-2026 game update.
+    // Fallback invocation in Plugin.BootFallback().
     [HarmonyPatch(typeof(BootApp), "Start")]
     [HarmonyPostfix]
     [HarmonyWrapSafe]

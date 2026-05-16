@@ -143,11 +143,14 @@ public static class ConfigManager
             "so XUAT receives and translates the full text as one unit.",
             typeof(Patches.TextRegistryPatch));
 
-        /// <summary>Enables skill effect regex index building at startup.</summary>
+        /// <summary>Enables skill-effect re-queueing so XUAT's regex templates translate effect rows.</summary>
         public static readonly PatchToggleSetting SkillEffectIndex = new(
-            S, "EnableSkillEffectIndex", true,
-            "Loads regex translation patterns from XUAT text files at startup for skill effect translation.",
-            typeof(Patches.SkillMergeIndexPatch));
+            S, "EnableSkillEffectTranslation", true,
+            "Fixes untranslated skill-effect rows in the Skill Details dialog. XUAT first polls each " +
+            "effect label with empty text and never sees the Japanese source, so its anchored regex " +
+            "templates never match. This re-reads the real text and re-queues it (newlines stripped) " +
+            "so XUAT's own r:\"…\" patterns translate the full effect chain.",
+            typeof(Patches.SkillEffectTranslationPatch));
 
         /// <summary>Enables all general UI layout correction patches.</summary>
         public static readonly PatchToggleSetting UILayout = new(

@@ -17,16 +17,18 @@ desktop.ini
 !/libs/
 !/libs/**/*.dll
 
-# AI Agent Skills & Configs (local-only)
+# AI Agent Configs (local-only)
 .agents/
-skills-lock.json
 .rtk/
 .claude/
 .windsurf/
 .cursor/
 .clinerules/
 .opencode/
+.github/copilot-instructions.md
+everything-claude-code/
 CLAUDE.md
-install_caveman.ps1
 AGENTS.md
 MEMORY.md
+skills-lock.json
+install_caveman.ps1
