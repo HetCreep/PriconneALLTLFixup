@@ -9,6 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using UnityEngine;
 
 
@@ -102,13 +103,13 @@ public static class SpriteAtlasPatch
         }
 
         var sw = Stopwatch.StartNew();
-        int loaded = 0;
 
+        // Phase 1: Resolve JSON→PNG mappings (CPU-only, no Unity calls)
+        var loadTasks = new List<(string name, string jsonPath, string pngPath)>(jsonFiles.Length);
         foreach (string jsonFile in jsonFiles)
         {
             string atlasName = Path.GetFileNameWithoutExtension(jsonFile);
 
-            // Match PNGs whose names are exactly `atlasName` or `atlasName [XXXXXXXXXX]` (hash variant)
             var candidates = pngBaseNames
                 .Where(f => Regex.IsMatch(f, $@"^{Regex.Escape(atlasName)}(\s\[[0-9A-F]{{10}}\])?$"))
                 .ToList();
@@ -119,7 +120,6 @@ public static class SpriteAtlasPatch
                 continue;
             }
 
-            // When multiple hash variants exist, pick the most recently modified one
             string chosenBase = candidates.Count == 1
                 ? candidates[0]
                 : candidates
@@ -133,7 +133,33 @@ public static class SpriteAtlasPatch
                 continue;
             }
 
-            LoadAtlas(atlasName, jsonFile, pngPath, shader);
+            loadTasks.Add((atlasName, jsonFile, pngPath));
+        }
+
+        // Phase 2: Parallel disk I/O — read JSON + PNG bytes on ThreadPool
+        var preloaded = new (string name, string json, byte[] bytes)[loadTasks.Count];
+        Parallel.For(0, loadTasks.Count, i =>
+        {
+            var (name, jsonPath, pngPath) = loadTasks[i];
+            try
+            {
+                preloaded[i] = (name, File.ReadAllText(jsonPath), File.ReadAllBytes(pngPath));
+            }
+            catch (Exception ex)
+            {
+                FLog.Error($"[Atlas] Failed to pre-read '{name}': {ex.Message}");
+                preloaded[i] = (name, null!, null!);
+            }
+        });
+
+        // Phase 3: Create Unity objects on main thread (Texture2D/Material/GameObject)
+        int loaded = 0;
+        for (int i = 0; i < preloaded.Length; i++)
+        {
+            var (name, json, bytes) = preloaded[i];
+            if (json == null || bytes == null) continue;
+
+            CreateAtlasFromPreloaded(name, json, bytes, shader);
             loaded++;
         }
 
@@ -141,14 +167,12 @@ public static class SpriteAtlasPatch
         FLog.Info($"[Atlas] Loaded {loaded}/{jsonFiles.Length} atlases in {sw.ElapsedMilliseconds} ms.");
     }
 
-    /// <summary>Creates a persistent <see cref="UIAtlas"/> from a JSON descriptor and a PNG texture.</summary>
-    private static void LoadAtlas(string atlasName, string jsonPath, string pngPath, Shader shader)
+    /// <summary>Creates a persistent <see cref="UIAtlas"/> from pre-read JSON and PNG data.
+    /// Must be called on the main thread (creates Unity objects).</summary>
+    private static void CreateAtlasFromPreloaded(string atlasName, string json, byte[] pngBytes, Shader shader)
     {
         try
         {
-            string json   = File.ReadAllText(jsonPath);
-            byte[] bytes  = File.ReadAllBytes(pngPath);
-
             var go = new GameObject(atlasName + FixupSuffix);
             go.Persistent();
 
@@ -163,7 +187,7 @@ public static class SpriteAtlasPatch
                 requestedMipmapLevel = 0,
                 filterMode           = FilterMode.Trilinear
             };
-            ImageConversion.LoadImage(tex, bytes);
+            ImageConversion.LoadImage(tex, pngBytes);
 
             var mat = new Material(shader)
             {
