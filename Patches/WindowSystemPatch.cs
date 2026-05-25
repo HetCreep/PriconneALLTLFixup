@@ -25,6 +25,11 @@ public static class WindowSystemPatch
     // Last known windowed size — fallback: computed smart default (DPI-aware, not hardcoded 1280x720)
     private static int _lastWidth  = 0; // 0 = not yet computed; resolved in PostfixBoot
     private static int _lastHeight = 0;
+
+    // Locked windowed client size, re-asserted once at boot to stop the WS_THICKFRAME frame from
+    // shrinking the client and making the game persist a corrupted sub-720p resolution.
+    private const int LockedWidth  = 1280;
+    private const int LockedHeight = 720;
     #endregion
 
     // =========================================================================
@@ -249,7 +254,13 @@ public static class WindowSystemPatch
                            | WindowsAPI.WS_EX_ACCEPTFILES;
             WindowsAPI.SetWindowLong(hWnd, WindowsAPI.GWL_EXSTYLE, exStyle);
 
-            FLog.Debug("[System] Window styles synchronized with OS.");
+            // Lock the windowed client to LockedWidth x LockedHeight. WS_THICKFRAME above thickens the
+            // frame, which would otherwise shrink the client and make the game persist a corrupted
+            // sub-720p resolution (e.g. 1262x673). Re-asserting via Unity sizes the client correctly
+            // (border-aware) and breaks that corruption loop. Manual F11/drag-resize still works.
+            Screen.SetResolution(LockedWidth, LockedHeight, FullScreenMode.Windowed);
+
+            FLog.Info($"[Window] Locked windowed client to {LockedWidth}x{LockedHeight}.");
         }
         catch (Exception ex) { FLog.Debug($"[System] OS Integrity Sync bypassed: {ex.Message}"); }
     }

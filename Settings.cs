@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using BepInEx.Configuration;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -13,7 +13,7 @@ public static class MyPluginInfo
     public const string Name           = "PriconneALLTLFixup";
     public const string Author         = "HetCreep";
     public const string OriginalAuthor = "Dakari and Olegase";
-    public const string Version        = "12.3.0";
+    public const string Version        = "12.3.5";
     public const string HarmonyGuid    = Guid;
     public const string RepoUrl        = "https://github.com/HetCreep/PriconneALLTLFixup";
     public const string ProcessName    = "PrincessConnectReDive.exe";
@@ -146,10 +146,13 @@ public static class ConfigManager
         /// <summary>Enables skill-effect re-queueing so XUAT's regex templates translate effect rows.</summary>
         public static readonly PatchToggleSetting SkillEffectIndex = new(
             S, "EnableSkillEffectTranslation", true,
-            "Fixes untranslated skill-effect rows in the Skill Details dialog. XUAT first polls each " +
-            "effect label with empty text and never sees the Japanese source, so its anchored regex " +
-            "templates never match. This re-reads the real text and re-queues it (newlines stripped) " +
-            "so XUAT's own r:\"…\" patterns translate the full effect chain.",
+            "Fixes untranslated skill-effect rows in the Skill Details dialog and boss descriptions " +
+            "in the Monster Details dialog. Skills: XUAT first polls each effect label with empty " +
+            "text and never sees the Japanese source, so its anchored regex templates never match; " +
+            "this re-reads the real text and re-queues it (newlines stripped) so XUAT's own r:\"…\" " +
+            "patterns translate the full effect chain. Monsters: the fragment list is collapsed to " +
+            "one plate and each logical line is self-translated individually (with a \"Loading...\" " +
+            "placeholder) so the endpoint cannot batch the boss-phase block into one garbled run-on.",
             typeof(Patches.SkillEffectTranslationPatch));
 
         /// <summary>Enables all general UI layout correction patches.</summary>

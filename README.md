@@ -134,6 +134,7 @@ All patch toggles support **live hot-reload** — changes take effect immediatel
 | Key | Default | Description |
 | :--- | :---: | :--- |
 | `EnableSmartSkillLayout` | `true` | Merges split/redundant skill description lines into a single coherent paragraph for XUAT. |
+| `EnableSkillEffectTranslation` | `true` | Fixes untranslated skill-effect rows (Skill Details) and boss descriptions (Monster Details). Skills: re-queues empty effect-label polls so XUAT regex matches. Monsters: collapses the fragment list to one plate and self-translates each line individually (with a `Loading...` placeholder) so the endpoint cannot batch the boss-phase block into one garbled run-on. |
 | `EnableUILayout` | `true` | **(silent)** Corrects positional offsets, overflow methods, and label widths across UI panels. |
 | `EnableBubbleFixes` | `true` | **(silent)** Dynamically resizes battle skill bubbles, guildhouse balloons, and SpineDrama bubbles. |
 | `EnableSubtitleFixes` | `true` | **(silent)** Enables movie subtitle overlay and pre-translation pump for cutscenes. |
@@ -183,6 +184,7 @@ All patch toggles support **live hot-reload** — changes take effect immediatel
 | **Number Formatting** | `NumberComponentPatch` | `UILabel::text` setter,<br>`CustomUILabel::SetText`,<br>`AutoTranslationPlugin::SetText` (bracket-aware: never formats digits inside `[…]` hex colour tags) | `EnableNumberFormatting` |
 | **UI Style, Font &<br>Load Guard** | `UIComponentPatch` | `CustomUILabel::Awake`<br>`UILabel::ProcessText`<br>`TextMesh::text` | `EnableFontReplacement`<br>/ `EnableUIResizer` |
 | **Skill Layout** | `TextRegistryPatch` | `ConstTextData::`<br>`CreateInstanceAndLoadInitialize`<br>`PartsUnitSkillDetailTextController::`<br>`Initialize` | `EnableSmartSkillLayout` |
+| **Skill & Monster TL** | `SkillEffectTranslationPatch` | `PartsUnitSkillDetail*` (skill 3-phase)<br>`PartsMonsterDetailTextController::Initialize`<br>`PartsMonsterDetailTextPlate::SetText`<br>`PartsDialogMonsterDetail::*` (monster self-TL) | `EnableSkillEffectTranslation` |
 | **UI Layout** | `UILayoutPatch` | 30+ hooks across menus, shops,<br>battle overlays, profile cards | `EnableUILayout` |
 | **Battle Bubbles** | `UIBubblePatch` | `LifeGaugeController::`<br>`IndicateSkillName`<br>`PartsRoomBalloon::`<br>`ShowSpeakingText` | `EnableBubbleFixes` |
 | **Story System** | `StorySystemPatch` | `StoryManager::execCommand`<br>`StoryManager::setPrintText`<br>`TutorialStoryManager::*` | `EnableStoryFixes` |

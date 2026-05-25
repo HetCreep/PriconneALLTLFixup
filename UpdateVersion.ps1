@@ -21,8 +21,8 @@ if ([string]::IsNullOrWhiteSpace($version)) {
     exit 1
 }
 
-$targetFile = Get-ChildItem -Path $PSScriptRoot -Include "MyPluginInfo.cs", "PluginInfo.cs", "Plugin.cs" -Recurse | 
-              Where-Object { $_.FullName -notmatch "\\(bin|obj)\\" } | 
+$targetFile = Get-ChildItem -Path $PSScriptRoot -Include "MyPluginInfo.cs", "PluginInfo.cs", "Plugin.cs" -Recurse |
+              Where-Object { $_.FullName -notmatch "\\(bin|obj)\\" } |
               Select-Object -First 1
 
 if ($null -eq $targetFile) {

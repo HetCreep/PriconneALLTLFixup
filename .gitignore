@@ -37,3 +37,6 @@ AGENTS.md
 MEMORY.md
 skills-lock.json
 install_caveman.ps1
+
+# Decompiled mod reference (local-only)
+_decomp/

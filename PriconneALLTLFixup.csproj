@@ -4,7 +4,7 @@
 		<TargetFramework>net6.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<LangVersion>latest</LangVersion>
-		<Version>12.2.0</Version>
+		<Version>12.3.5</Version>
 		<Authors>HetCreep</Authors>
 		<Description>PriconneALLTLFixup by HetCreep</Description>
 		<PackageProjectUrl>https://github.com/HetCreep/PriconneALLTLFixup</PackageProjectUrl>
@@ -36,14 +36,17 @@
 		<Compile Remove="Base\**" />
 		<Compile Remove="libs\**" />
 		<Compile Remove="Patches\**" />
+		<Compile Remove="_decomp\**" />
 		<EmbeddedResource Remove="addon\**" />
 		<EmbeddedResource Remove="Base\**" />
 		<EmbeddedResource Remove="libs\**" />
 		<EmbeddedResource Remove="Patches\**" />
+		<EmbeddedResource Remove="_decomp\**" />
 		<None Remove="addon\**" />
 		<None Remove="Base\**" />
 		<None Remove="libs\**" />
 		<None Remove="Patches\**" />
+		<None Remove="_decomp\**" />
 	</ItemGroup>
 
 	<ItemGroup>

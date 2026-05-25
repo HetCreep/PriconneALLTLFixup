@@ -53,13 +53,18 @@ namespace PriconneALLTLFixup.Patches;
 /// compile as exact parameter types and MonoMod emits a clean trampoline.</para>
 ///
 /// <para><b>Phase 4 — Monster Details</b> (<see cref="PrefixMonsterMerge"/> and
-/// friends): the boss/enemy <c>Monster Details</c> dialog has its own controller
-/// fed by a plain <c>List&lt;string&gt;</c> of pre-wrapped display-line
-/// fragments. Phase 4 regroups those fragments into logical lines — one plate
-/// per line — lets each plate's label grow to fit, and re-enables the scroll
-/// view. One plate per logical line keeps every label short: merging the whole
-/// description into a single block made XUAT's regex scan block the main thread
-/// for ~3 s (the in-game freeze).</para>
+/// friends): the scroll/overflow skeleton is a faithful port of PriconneTLFixup's
+/// four monster patches — <c>SkillDescriptionPatch</c> (P1: collapse the fragment
+/// list to one entry so the recycling controller builds exactly one plate),
+/// <c>MonsterDetailScrollContainerPatch</c> (P2: enable the scroll view),
+/// <c>MonsterDetailOverflowPatch</c> (P3: <c>ResizeHeight</c> + a watcher that
+/// repositions the plate and refreshes scroll bounds on each text change), and
+/// <c>MonsterDetailScrollContainerPatch2</c> (P4: stop that watcher on destroy).
+/// The original mod shipped a complete translation pack; against a live MT
+/// endpoint P1 instead hands the plate a non-Japanese placeholder and P3 starts
+/// <see cref="TranslateMonsterLines"/>, which translates every logical line as
+/// its own request — XUAT can no longer batch the uncached boss-phase block into
+/// one over-long Sugoi job that comes back as a structure-less run-on.</para>
 /// </summary>
 [HarmonyPatch]
 public static class SkillEffectTranslationPatch
@@ -74,6 +79,9 @@ public static class SkillEffectTranslationPatch
 
     /// <summary>Font size forced onto the merged detail label (old-mod recipe).</summary>
     private const int DetailFontSize = 17;
+
+    /// <summary>Labels whose GetInstanceID() is tracked here will be bypassed in TranslateOrQueueWebJobImmediate.</summary>
+    private static readonly System.Collections.Generic.HashSet<int> _ignoredLabels = new();
 
     #region Phase 1 — store & thin (PartsUnitSkillDetailTextController.Initialize)
     [HarmonyPatch(typeof(PartsUnitSkillDetailTextController), "Initialize")]
@@ -290,7 +298,7 @@ public static class SkillEffectTranslationPatch
     [HarmonyPatch(typeof(AutoTranslationPlugin), "TranslateOrQueueWebJobImmediate")]
     [HarmonyPrefix]
     [HarmonyWrapSafe]
-    public static void PrefixRequeueEmptyPoll(
+    public static bool PrefixRequeueEmptyPoll(
         AutoTranslationPlugin         __instance,
         object                        ui,
         string                        text,
@@ -304,48 +312,72 @@ public static class SkillEffectTranslationPatch
         UntranslatedTextInfo          untranslatedTextContext,
         ParserTranslationContext      context)
     {
+        if (ui is UnityEngine.Object obj && _ignoredLabels.Contains(obj.GetInstanceID()))
+            return false;
+
         if (!string.IsNullOrWhiteSpace(text) || (info != null && info.IsCurrentlySettingText))
-            return;
+            return true;
 
         text = ui.GetText(info);
-        if (string.IsNullOrWhiteSpace(text)) return;
+        if (string.IsNullOrWhiteSpace(text)) return true;
 
         if (text.Contains('※') || text.Contains('[') || !ContainsJapanese(text))
-            return;
+            return true;
 
         var probe = new UntranslatedText(text, false, false, true, false, false);
         if (__instance.TextCache.TryGetTranslation(probe, false, false, -1, out _))
-            return;
+            return true;
 
         var probeRegex = new UntranslatedText(text, false, false, true, true, true);
         if (__instance.TextCache.TryGetTranslation(probeRegex, false, true, -1, out _))
-            return;
+            return true;
 
         string flat = text.Replace("\n", string.Empty);
         __instance.TranslateOrQueueWebJobImmediate(
             ui, flat, scope, info,
             allowStabilizationOnTextComponent, ignoreComponentState,
             false, false, tc, untranslatedTextContext, context);
+            
+        return true;
     }
     #endregion
 
-    #region Phase 4 — Monster Details (PartsMonsterDetail* / PartsDialogMonsterDetail)
-    /// <summary>Re-stack coroutine for the open Monster Details dialog;
-    /// self-terminates after a short settling window.</summary>
+    #region Phase 4 — Monster Details (faithful port of PriconneTLFixup's 4 monster patches)
+    /// <summary>Handle of the P3 plate-watcher coroutine for the open Monster
+    /// Details dialog; stopped by P4 when the dialog is destroyed.</summary>
     private static UnityEngine.Coroutine? _monsterCoroutine;
 
-    /// <summary>Vertical gap left between monster plates while re-stacking.</summary>
-    private const float MonsterPlateGap = 8f;
+    /// <summary>Handle of the P3 self-translate coroutine
+    /// (<see cref="TranslateMonsterLines"/>); stopped by P4.</summary>
+    private static UnityEngine.Coroutine? _monsterTranslateCoroutine;
+
+    /// <summary>Logical monster-detail lines parked by P1 for P3 to pick up and
+    /// self-translate per line; <c>null</c> when no self-translate is pending.</summary>
+    private static List<string>? _pendingMonsterLines;
+
+    /// <summary>Placeholder shown in the monster plate while the per-line
+    /// self-translation runs. Contains no Japanese, so XUAT leaves it alone and
+    /// does not race the coroutine for the label.</summary>
+    private const string MonsterLoadingPlaceholder = "Loading...";
 
     /// <summary>
-    /// M1 — at <c>PartsMonsterDetailTextController.Initialize</c>, rebuilds the
-    /// per-display-line fragments into one block: groups them into logical
-    /// lines, translates each via a DIRECT cache lookup (no regex scan), joins
-    /// the results, and registers the finished block in XUAT's cache as a
-    /// translation of itself. That registration is the freeze fix — XUAT's
-    /// empty-poll re-queue (Phase 3) does a direct cache lookup first, hits, and
-    /// SKIPS the synchronous re-queue whose regex scan over the long block froze
-    /// the game ~3 s (proven by timing logs: <c>P3 requeue → 3.07 s gap</c>).
+    /// P1 — port of <c>SkillDescriptionPatch</c>'s fragment-collapse, adapted for
+    /// a live-MT endpoint. Three steps:
+    /// <list type="bullet">
+    /// <item><b>merge</b> — the game display-wraps a logical line across several
+    /// fragments, indenting continuations with U+3000; those are joined back so
+    /// each translation request is a whole line, not a mid-word fragment (which
+    /// came back as garbage such as <c>る。</c> =&gt; "Ru.").</item>
+    /// <item><b>long-line split</b> — an unusually long logical line is broken at
+    /// its bullets by <see cref="SplitLongMonsterLine"/> so no single request is
+    /// long enough for Sugoi to return as a structure-less run-on.</item>
+    /// <item><b>placeholder</b> — the merged lines are parked in
+    /// <see cref="_pendingMonsterLines"/> and the controller is handed a single
+    /// <see cref="MonsterLoadingPlaceholder"/> entry. It still builds exactly one
+    /// plate; P3 then self-translates the parked lines line-by-line. Handing XUAT
+    /// the raw multi-line Japanese instead let it batch the whole uncached
+    /// boss-phase block into one garbled Sugoi job.</item>
+    /// </list>
     /// </summary>
     [HarmonyPatch(typeof(PartsMonsterDetailTextController), "Initialize")]
     [HarmonyPrefix]
@@ -357,18 +389,26 @@ public static class SkillEffectTranslationPatch
 
         try
         {
-            var arr = _monsterDetailTextList.ToArray();
+            var parts = _monsterDetailTextList.ToArray();
 
-            // Group the per-display-line fragments into logical lines
-            // (continuation fragments are U+3000-indented).
-            var logical = new List<string>(arr.Length);
+            // merge — re-join U+3000-indented continuation fragments so the
+            // game's mid-word display wrapping is undone.
+            var logical = new List<string>(parts.Length);
             var cur = new StringBuilder(160);
-            for (int i = 0; i < arr.Length; i++)
+            for (int i = 0; i < parts.Length; i++)
             {
-                string frag = arr[i] ?? string.Empty;
+                string frag = parts[i] ?? string.Empty;
                 if (cur.Length > 0 && frag.Length > 0 && frag[0] == '　')
                 {
                     cur.Append(frag.TrimStart('　'));
+                }
+                else if (frag.Length == 0)
+                {
+                    // Blank fragment — the source's paragraph break between
+                    // 【Phase】 blocks. Flush the current logical line and emit
+                    // an empty line so the gap survives the merge.
+                    if (cur.Length > 0) { logical.Add(cur.ToString()); cur.Clear(); }
+                    logical.Add(string.Empty);
                 }
                 else
                 {
@@ -379,87 +419,77 @@ public static class SkillEffectTranslationPatch
             }
             if (cur.Length > 0) logical.Add(cur.ToString());
 
-            // Translate each logical line via a DIRECT cache lookup only. The
-            // '・' bullet is stripped for the lookup (BossDesc.txt keys are
-            // bullet-less) and re-attached as '►' on a hit. Direct lookups are
-            // O(1) hash hits — no regex scan, so this never blocks the thread.
-            var sb = new StringBuilder(640);
-            int hits = 0;
+            // long-line split — break only an over-long line at its bullets.
+            var lines = new List<string>(logical.Count + 8);
             for (int i = 0; i < logical.Count; i++)
-            {
-                if (i > 0) sb.Append('\n');
-                string line = logical[i];
-                if (line.Length > 0 && line[0] == '・')
-                {
-                    string bare = line.Substring(1);
-                    string en   = ResolveCached(bare, allowRegex: false);
-                    if (!ReferenceEquals(en, bare)) { sb.Append('►').Append(en); hits++; }
-                    else                              sb.Append(line);
-                }
-                else
-                {
-                    string en = ResolveCached(line, allowRegex: false);
-                    sb.Append(en);
-                    if (!ReferenceEquals(en, line)) hits++;
-                }
-            }
-            string block = sb.ToString();
+                SplitLongMonsterLine(logical[i], lines);
+            if (lines.Count == 0) return;
 
-            // Register the finished block as a translation of itself so XUAT's
-            // empty-poll probe (Phase 3, an un-templated DIRECT lookup) hits and
-            // skips its synchronous re-queue — that re-queue was the ~3 s freeze.
-            RegisterSelfTranslation(block);
-
-            var merged = new Il2CppSystem.Collections.Generic.List<string>();
-            merged.Add(block);
-            _monsterDetailTextList = merged;
+            // Park the logical lines for P3's per-line self-translate and hand
+            // the controller a placeholder — see the method summary.
+            _pendingMonsterLines = lines;
+            var single = new Il2CppSystem.Collections.Generic.List<string>();
+            single.Add(MonsterLoadingPlaceholder);
+            _monsterDetailTextList = single;
 
             if (FLog.IsDeveloperContext)
-                FLog.Info($"[SkillMerge] Monster: {arr.Length} frags -> {logical.Count} lines, {hits} resolved.");
-        }
-        catch (Exception ex)
-        {
-            FLog.Error("[SkillMerge] Monster merge failed", ex);
-        }
-    }
-
-    /// <summary>
-    /// M2 — at <c>PartsMonsterDetailTextPlate.SetText</c>, lets each plate's
-    /// detail label grow vertically to fit its logical-line text.
-    /// </summary>
-    [HarmonyPatch(typeof(PartsMonsterDetailTextPlate), "SetText")]
-    [HarmonyPostfix]
-    [HarmonyWrapSafe]
-    public static void PostfixMonsterOverflow(PartsMonsterDetailTextPlate __instance)
-    {
-        if (!__instance.IsSafe()) return;
-
-        try
-        {
-            var label = __instance.detailText;
-            if (label.IsSafe())
-                label!.overflowMethod = UILabel.Overflow.ResizeHeight;
-
-            // The controller stacks plates assuming one display line each, so a
-            // multi-line logical-line plate overlaps the ones below it. Re-stack
-            // every plate by its real (resized) height. Restarted per SetText
-            // (debounce); the coroutine self-terminates after a short window.
-            var container = __instance.transform.parent;
-            if (container.IsSafe())
             {
-                if (_monsterCoroutine != null) CoroutineStarter.Stop(_monsterCoroutine);
-                _monsterCoroutine = CoroutineStarter.Run(MonsterRestack(container!));
+                FLog.Info($"[SkillMerge] Monster P1: {parts.Length} fragments -> {logical.Count} logical " +
+                          $"-> {lines.Count} lines parked for self-translate.");
+                // Per-fragment dump (dev only). Reveals whether the source
+                // sends "" separators where JP layout shows no gap, and lets
+                // us trace any extra blank lines back to a specific fragment
+                // or to a translation result.
+                for (int i = 0; i < parts.Length; i++)
+                {
+                    string f = parts[i] ?? string.Empty;
+                    FLog.Info($"[SkillMerge]   frag[{i}] len={f.Length}: {f}");
+                }
             }
         }
         catch (Exception ex)
         {
-            FLog.Error("[SkillMerge] Monster overflow failed", ex);
+            FLog.Error("[SkillMerge] Monster P1 (merge) failed", ex);
         }
     }
 
     /// <summary>
-    /// M3 — port of <c>MonsterDetailScrollContainerPatch</c>. Re-enables the
-    /// monster dialog's scroll view so the taller merged plate can scroll.
+    /// Appends <paramref name="line"/> to <paramref name="outList"/>. A short
+    /// line passes through whole — its XUAT cache key must not change, and it may
+    /// hold a name-internal '・' (e.g. 六凶・魔蜘) or an inline term (【蒐輝】,
+    /// 【月の祝福】) that must stay intact. An over-long line — the boss
+    /// phase-transition block is one ~300-char run-on with many '・' and no '。'
+    /// — is broken at each bullet '・' so Sugoi translates each point as a short
+    /// unit. '・' is the only split char: '。' is absent from these blocks and
+    /// '【' also delimits inline terms.
+    /// </summary>
+    private static void SplitLongMonsterLine(string line, List<string> outList)
+    {
+        const int LongLineThreshold = 150;
+        if (line.Length <= LongLineThreshold)
+        {
+            outList.Add(line);
+            return;
+        }
+
+        var seg = new StringBuilder(line.Length);
+        for (int i = 0; i < line.Length; i++)
+        {
+            char c = line[i];
+            if (c == '・' && seg.Length > 0)
+            {
+                outList.Add(seg.ToString());
+                seg.Clear();
+            }
+            seg.Append(c);
+        }
+        if (seg.Length > 0) outList.Add(seg.ToString());
+    }
+
+    /// <summary>
+    /// P2 — port of <c>MonsterDetailScrollContainerPatch</c>. At
+    /// <c>PartsDialogMonsterDetail.InitializeParam</c>, re-enables the monster
+    /// detail controller's scroll view so the tall single plate can scroll.
     /// </summary>
     [HarmonyPatch(typeof(PartsDialogMonsterDetail), "InitializeParam")]
     [HarmonyPostfix]
@@ -477,69 +507,254 @@ public static class SkillEffectTranslationPatch
     }
 
     /// <summary>
-    /// Re-stacks every monster plate top-to-bottom by its real (resized) label
-    /// height so multi-display-line logical lines no longer overlap. Runs a few
-    /// passes over a short settling window, then stops — it does not fight the
-    /// scroll controller indefinitely.
+    /// P3 — port of <c>MonsterDetailOverflowPatch</c>. At
+    /// <c>PartsMonsterDetailTextPlate.SetText</c>, switches the detail label to
+    /// <c>ResizeHeight</c> overflow and (re)starts the
+    /// <see cref="UpdateMonsterDetailPlate"/> watcher.
     /// </summary>
-    private static System.Collections.IEnumerator MonsterRestack(Transform container)
+    [HarmonyPatch(typeof(PartsMonsterDetailTextPlate), "SetText")]
+    [HarmonyPostfix]
+    [HarmonyWrapSafe]
+    public static void PostfixMonsterOverflow(PartsMonsterDetailTextPlate __instance)
     {
-        for (int pass = 0; pass < 8 && container.IsSafe(); pass++)
+        if (!__instance.IsSafe()) return;
+
+        try
         {
-            float y = 0f;
-            bool first = true;
-            int n = container!.childCount;
-            for (int i = 0; i < n; i++)
+            var label = __instance.detailText;
+            if (label.IsSafe())
+                label!.overflowMethod = UILabel.Overflow.ResizeHeight;
+
+            if (_monsterCoroutine != null) CoroutineStarter.Stop(_monsterCoroutine);
+            _monsterCoroutine = CoroutineStarter.Run(UpdateMonsterDetailPlate(__instance!));
+
+            // If P1 parked lines for self-translation, start it now against this
+            // plate. _pendingMonsterLines is cleared so a repeat SetText cannot
+            // launch a second translate over the same plate.
+            if (_pendingMonsterLines != null)
             {
-                var child = container.GetChild(i);
-                if (!child.IsSafe() || !child!.gameObject.activeSelf) continue;
-                var lbl = MonsterLabelOf(child);
-                if (!lbl.IsSafe()) continue;
-                if (first) { y = child.localPosition.y; first = false; }
-                var p = child.localPosition;
-                child.localPosition = new Vector3(p.x, y, p.z);
-                y -= lbl!.localSize.y + MonsterPlateGap;
+                var pending = _pendingMonsterLines;
+                _pendingMonsterLines = null;
+                if (_monsterTranslateCoroutine != null) CoroutineStarter.Stop(_monsterTranslateCoroutine);
+                _monsterTranslateCoroutine = CoroutineStarter.Run(TranslateMonsterLines(__instance!, pending));
             }
-            for (int f = 0; f < 6 && container.IsSafe(); f++)
-                yield return null;
+        }
+        catch (Exception ex)
+        {
+            FLog.Error("[SkillMerge] Monster P3 (overflow) failed", ex);
         }
     }
 
-    /// <summary>Returns a monster plate's detail label, or <c>null</c>.</summary>
-    private static CustomUILabel? MonsterLabelOf(Transform plate)
+    /// <summary>
+    /// Watcher coroutine for the monster detail plate. On every label-text change
+    /// (i.e. when XUAT swaps in the translation) it waits for NGUI to lay out the
+    /// resized label, repositions the plate below its lowest sibling, then presses
+    /// the surrounding <see cref="UIDragScrollView"/>s to refresh the scroll
+    /// bounds. Loops until the label is destroyed. Faithful port of
+    /// <c>MonsterDetailOverflowPatch.UpdateDetailTextPlate</c>.
+    /// </summary>
+    private static System.Collections.IEnumerator UpdateMonsterDetailPlate(
+        PartsMonsterDetailTextPlate textPlate)
     {
-        var p = plate.GetComponent<PartsMonsterDetailTextPlate>();
-        return p.IsSafe() ? p!.detailText : null;
+        if (!textPlate.IsSafe()) yield break;
+
+        var go     = textPlate!.gameObject;
+        var parent = go.transform.parent;
+
+        // Lowest-Y sibling, excluding the plate itself.
+        Transform? lowestChild = null;
+        if (parent.IsSafe())
+        {
+            for (int i = 0; i < parent!.childCount; i++)
+            {
+                var child = parent.GetChild(i);
+                if (!child.IsSafe() || child == go.transform) continue;
+                if (!lowestChild.IsSafe() || child!.position.y < lowestChild!.position.y)
+                    lowestChild = child;
+            }
+        }
+
+        string last = string.Empty;
+        while (textPlate.IsSafe() && textPlate!.detailText.IsSafe())
+        {
+            string now = textPlate.detailText!.text ?? string.Empty;
+            if (now != last)
+            {
+                last = now;
+                yield return null;   // let NGUI lay out the resized label
+
+                if (lowestChild.IsSafe())
+                {
+                    int height = textPlate.detailText!.height;
+                    var lp = go.transform.localPosition;
+                    go.transform.localPosition =
+                        new Vector3(lp.x, lowestChild!.localPosition.y - height / 2f, lp.z);
+                }
+
+                yield return null;
+                yield return null;
+                yield return null;
+
+                PressDragScrollView(textPlate.transform);
+                PressDragScrollView(textPlate.transform.IsSafe() ? textPlate.transform!.parent : null);
+                var self = textPlate.transform.IsSafe()
+                    ? textPlate.transform!.GetComponent<UIDragScrollView>() : null;
+                if (self.IsSafe()) self!.CallOnPress();
+            }
+            yield return null;
+        }
     }
-    #endregion
+
+    /// <summary>Finds a <see cref="UIDragScrollView"/> under <paramref name="root"/>
+    /// and presses it so the scroll view recomputes its content bounds.</summary>
+    private static void PressDragScrollView(Transform? root)
+    {
+        if (!root.IsSafe()) return;
+        var drag = root!.GetComponentInChildren<UIDragScrollView>();
+        if (drag.IsSafe()) drag!.CallOnPress();
+    }
 
     /// <summary>
-    /// Looks <paramref name="japanese"/> up in XUAT's already-loaded translation
-    /// cache and returns the finished translation when one exists, so a caller can
-    /// paint the final text immediately instead of waiting for XUAT's async
-    /// pipeline. The probe is un-templated so a regex <c>Match.Result</c>
-    /// substitution yields clean text. On a miss the Japanese is returned
-    /// unchanged so XUAT still translates it the normal (delayed) way.
-    ///
-    /// <para><paramref name="allowRegex"/> MUST be <c>false</c> for long composite
-    /// strings such as the whole Monster Details block. XUAT's regex path scans
-    /// every loaded <c>r:"…"</c> template; over a 500-char block that scan blocks
-    /// the main thread for seconds (the in-game freeze), and a stray substring
-    /// match would return a partial string that corrupts the block. Direct-only
-    /// lookups are O(1) hash hits and can only ever return a whole-string match.</para>
+    /// P3 self-translate. Each parked logical line is translated as its own
+    /// XUAT request, so the endpoint never sees the multi-line Japanese block
+    /// it would otherwise batch into one over-long, garbled job. A leading
+    /// <c>・</c> is split off before the request so the cache key stays
+    /// <c>・</c>-less, matching the shipped translation pack's convention
+    /// (<c>全属性…=…</c>, not <c>・全属性…=・…</c>). A <c>►</c> bullet is then
+    /// re-attached to the result for display — matching the pack's
+    /// <c>\n・=\n►</c> rule, which XUAT runs during lookup but not on text we
+    /// set directly on the label. Non-Japanese lines (separators) pass
+    /// through untouched. Bracket form (<c>【】</c> vs <c>[]</c>) is left
+    /// verbatim — the shipped pack does not lock either, so we match its
+    /// pass-through behaviour. When every line is resolved — or a bounded
+    /// wait elapses — the assembled text replaces the
+    /// <see cref="MonsterLoadingPlaceholder"/> directly on the label, which
+    /// the <see cref="UpdateMonsterDetailPlate"/> watcher then lays out.
     /// </summary>
+    private static System.Collections.IEnumerator TranslateMonsterLines(
+        PartsMonsterDetailTextPlate plate, List<string> lines)
+    {
+        int count = lines.Count;
+        var results = new string[count];
+        int remaining = count;
+
+        for (int i = 0; i < count; i++)
+        {
+            string line = lines[i] ?? string.Empty;
+
+            // Non-Japanese lines (the separator rule) pass through untouched.
+            if (!ContainsJapanese(line))
+            {
+                results[i] = line;
+                remaining--;
+                continue;
+            }
+
+            // Split a leading '・' off the cache key so we never write
+            // '・xxx=・eng' entries — the shipped pack stores 'xxx=eng'. A
+            // '►' is re-attached to the result for display, matching the
+            // shipped pack's '\n・=\n►' substitution that runs during XUAT
+            // lookup but not on text we set directly on the label.
+            string bullet = (line.Length > 0 && line[0] == '・') ? "►" : string.Empty;
+            string toTranslate = line.Substring((line.Length > 0 && line[0] == '・') ? 1 : 0);
+
+            if (toTranslate.Length == 0 || !ContainsJapanese(toTranslate))
+            {
+                results[i] = bullet + toTranslate;
+                remaining--;
+                continue;
+            }
+
+            int idx = i;
+            string lead = bullet;
+            string original = line;
+            try
+            {
+                XUnity.AutoTranslator.Plugin.Core.AutoTranslator.Default.TranslateAsync(
+                    toTranslate,
+                    result =>
+                    {
+                        // Trim newlines that some endpoints (Sugoi) append, so
+                        // a one-line translation does not introduce an extra
+                        // blank line when the per-line results are joined.
+                        // Brackets and other glyphs pass through verbatim —
+                        // the upstream pack does not lock 【】 vs [] either.
+                        results[idx] = (result != null && result.Succeeded
+                                        && !string.IsNullOrEmpty(result.TranslatedText))
+                            ? lead + result.TranslatedText.Trim('\r', '\n')
+                            : original;
+                        remaining--;
+                    });
+            }
+            catch (Exception ex)
+            {
+                FLog.Error("[SkillMerge] Monster self-translate request failed", ex);
+                results[idx] = original;
+                remaining--;
+            }
+        }
+
+        // Bounded wait — a stalled endpoint must not hang the coroutine forever.
+        const int MaxWaitFrames = 1800;
+        int waited = 0;
+        while (remaining > 0 && waited < MaxWaitFrames)
+        {
+            waited++;
+            yield return null;
+        }
+
+        if (remaining > 0)
+        {
+            for (int i = 0; i < count; i++)
+                if (results[i] == null) results[i] = lines[i] ?? string.Empty;
+            FLog.Warn($"[SkillMerge] Monster self-translate timed out, {remaining} line(s) unresolved.");
+        }
+
+        if (plate.IsSafe() && plate!.detailText.IsSafe())
+        {
+            plate.detailText!.text = string.Join("\n", results);
+            if (FLog.IsDeveloperContext)
+                FLog.Info($"[SkillMerge] Monster self-translate applied ({count} lines).");
+        }
+
+        _monsterTranslateCoroutine = null;
+    }
+
+    /// <summary>
+    /// P4 — port of <c>MonsterDetailScrollContainerPatch2</c>. At
+    /// <c>PartsDialogMonsterDetail.OnDestroy</c>, stops the P3 watcher and
+    /// self-translate coroutines so neither keeps running against a destroyed
+    /// plate, and drops any pending self-translate lines.
+    /// </summary>
+    [HarmonyPatch(typeof(PartsDialogMonsterDetail), "OnDestroy")]
+    [HarmonyPostfix]
+    [HarmonyWrapSafe]
+    public static void PostfixMonsterDestroy()
+    {
+        if (_monsterCoroutine != null)
+        {
+            CoroutineStarter.Stop(_monsterCoroutine);
+            _monsterCoroutine = null;
+        }
+        if (_monsterTranslateCoroutine != null)
+        {
+            CoroutineStarter.Stop(_monsterTranslateCoroutine);
+            _monsterTranslateCoroutine = null;
+        }
+        _pendingMonsterLines = null;
+    }
+    #endregion
     private static string ResolveCached(string japanese, bool allowRegex = true)
     {
         try
         {
-            var plugin = AutoTranslationPlugin.Current;
-            if (plugin == null) return japanese;
-
-            var probe = new UntranslatedText(japanese, false, false, true, false, false);
-            if (plugin.TextCache.TryGetTranslation(probe, allowRegex, false, -1, out var translated)
-                && !string.IsNullOrEmpty(translated)
-                && translated != japanese)
-                return translated;
+            if (string.IsNullOrEmpty(japanese)) return japanese;
+            
+            if (XUnity.AutoTranslator.Plugin.Core.AutoTranslator.Default.TryTranslate(japanese, out string translated, out string _))
+            {
+                if (!string.IsNullOrEmpty(translated) && translated != japanese)
+                    return translated;
+            }
         }
         catch (Exception ex)
         {
@@ -548,42 +763,15 @@ public static class SkillEffectTranslationPatch
         return japanese;
     }
 
-    /// <summary>
-    /// Registers <paramref name="text"/> in XUAT's translation cache as a
-    /// translation of itself. XUAT's empty-poll re-queue (Phase 3) does an
-    /// un-templated DIRECT cache lookup before re-queuing; a hit there makes it
-    /// skip the synchronous re-queue whose regex scan over the long Monster
-    /// Details block froze the game ~3 s.
-    /// </summary>
-    private static void RegisterSelfTranslation(string text)
-    {
-        if (string.IsNullOrEmpty(text)) return;
-        try
-        {
-            var plugin = AutoTranslationPlugin.Current;
-            plugin?.TextCache?.AddTranslationToCache(
-                text, text, persistToDisk: false, TranslationType.Full, -1);
-        }
-        catch (Exception ex)
-        {
-            FLog.Error("[SkillMerge] RegisterSelfTranslation failed", ex);
-        }
-    }
-
-    /// <summary>
-    /// Returns <c>true</c> when <paramref name="text"/> contains any character
-    /// in the Japanese/CJK Unicode blocks. Replaces the original mod's
-    /// ASCII-only <c>IsEnglish()</c> check so the patch behaves correctly for
-    /// every target locale.
-    /// </summary>
     private static bool ContainsJapanese(string text)
     {
         foreach (char c in text)
         {
-            if ((c >= '぀' && c <= 'ヿ') ||   // Hiragana + Katakana
-                (c >= '一' && c <= '鿿'))      // CJK Unified Ideographs
+            if ((c >= '぀' && c <= 'ヿ') ||
+                (c >= '一' && c <= '鿿'))
                 return true;
         }
         return false;
     }
+
 }

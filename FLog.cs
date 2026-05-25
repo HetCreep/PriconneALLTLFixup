@@ -11,9 +11,15 @@ public static class FLog
 
     public static bool IsActive => _internalSource != null;
 
-    private static bool _cachedDebugMode;
-
-    public static bool IsDeveloperContext => _cachedDebugMode;
+    /// <summary>
+    /// <c>true</c> when the <c>DeveloperLogs</c> setting is enabled. Read LIVE
+    /// from config on every access — never cached: <see cref="Initialize"/> runs
+    /// before <c>ConfigManager.Initialize</c> binds the config file, so a value
+    /// cached at init time would be stuck at the default (<c>false</c>) forever.
+    /// <c>ConfigSetting&lt;T&gt;.Value</c> safely returns the default until the
+    /// entry is bound, then the persisted value.
+    /// </summary>
+    public static bool IsDeveloperContext => ConfigManager.Core.DebugMode.Value;
     #endregion
 
     #region 2. System Integration
@@ -21,11 +27,6 @@ public static class FLog
     {
         if (_internalSource != null) return;
         _internalSource = source;
-
-        _cachedDebugMode = ConfigManager.Core.DebugMode.Value;
-        ConfigManager.OnChanged += () => {
-            _cachedDebugMode = ConfigManager.Core.DebugMode.Value;
-        };
     }
     #endregion
 
