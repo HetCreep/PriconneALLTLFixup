@@ -45,16 +45,26 @@ public static class TranslationCorePatch
         @"\[[0-9A-Fa-f]{3,6}(?:,[0-9A-Fa-f]{3,6})+\]", RegexOptions.Compiled);
 
     /// <summary>
-    /// Fallback collapse used when the live UILabel reference is unavailable (cache
-    /// scrub paths, ApplyFinalPolish): reduces a multi-segment bracket tag to a
-    /// single-color tag using the first hex segment. Drops the tag entirely if the
-    /// first segment isn't valid 3- or 6-char hex.
+    /// Collapses an MT-mangled multi-segment bracket tag to a single-color tag using
+    /// the first hex segment (drops it entirely if that segment isn't valid 3-/6-char
+    /// hex). A genuine game-original gradient — exactly two equal-length 3- or 6-char
+    /// hex segments, e.g. <c>[FF7C4E,D62146]</c> — is kept verbatim: NGUI renders
+    /// these natively (the untranslated Japanese display proves it), so collapsing
+    /// them made colored values such as the Caravan turn/checkpoint numbers lose
+    /// their gradient and no longer match the Japanese screen.
     /// </summary>
     private static readonly MatchEvaluator MalformedTagEvaluator = m =>
     {
         string inner = m.Value.Substring(1, m.Value.Length - 2);
-        int comma = inner.IndexOf(',');
-        string firstSeg = comma < 0 ? inner : inner.Substring(0, comma);
+        string[] segs = inner.Split(',');
+
+        // Valid two-stop gradient → leave untouched.
+        if (segs.Length == 2 && segs[0].Length == segs[1].Length
+            && (segs[0].Length == 3 || segs[0].Length == 6))
+            return m.Value;
+
+        // MT-mangled (3+ fragments, e.g. [FF7C4E,D62,146]) → first valid hex, or drop.
+        string firstSeg = segs[0];
         return (firstSeg.Length == 3 || firstSeg.Length == 6) ? "[" + firstSeg + "]" : string.Empty;
     };
 
