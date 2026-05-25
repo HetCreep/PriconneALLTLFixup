@@ -103,6 +103,13 @@ public static class UIBubblePatch
     {
         string text = originalText;
 
+        // Force ResizeHeight so the label keeps full font size and wraps + grows
+        // downward, instead of the default ShrinkContent shrinking the font to
+        // fit a fixed box (long non-Japanese greetings were rendering tiny). The
+        // loop below then grows the balloon sprite to match the printed height.
+        if (balloon.IsSafe() && balloon.speakingText.IsSafe())
+            balloon.speakingText!.overflowMethod = UILabel.Overflow.ResizeHeight;
+
         while (balloon.IsSafe() && balloon.SpeakingActive)
         {
             if (balloon.speakingText.text != text)

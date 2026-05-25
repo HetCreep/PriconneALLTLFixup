@@ -503,6 +503,33 @@ public static class UIComponentPatch
     public static void PostfixUnclamp(UILabel __instance)
     {
         if (!__instance.IsSafe()) return;
+
+        // Fixed-slot tab/nav captions: the game sizes each tab button for Japanese,
+        // so a longer translation overflows the slot and overlaps the next tab. Read
+        // that game-designed slot — the nearest BoxCollider ancestor (the tab
+        // button's clickable width, i.e. the value baked into the game) — and
+        // constrain the caption to it with ShrinkContent, letting NGUI scale the
+        // font down to fit. Short text keeps full size; only longer languages
+        // shrink. Language-agnostic: the slot comes from the game (computed once
+        // from the JP layout), no per-language tuning. The idempotency guard
+        // (already ShrinkContent at the slot width) stops the re-process looping.
+        string tabName = __instance.name;
+        if (tabName != null &&
+            (tabName.StartsWith("tab_text") || tabName.Contains("TabNameLabel")))
+        {
+            int slot = NearestColliderWidth(__instance.transform);
+            if (slot > 16 &&
+                (__instance.overflowMethod != UILabel.Overflow.ShrinkContent || __instance.lineWidth != slot))
+            {
+                __instance.overflowMethod = UILabel.Overflow.ShrinkContent;
+                __instance.lineWidth = slot;
+                __instance.ProcessText();
+                if (FLog.IsDeveloperContext)
+                    FLog.Info($"[TabFit] {tabName} slot={slot} -> ShrinkContent");
+            }
+            return;
+        }
+
         if (!__instance.isValid || !__instance.mChanged) return;
 
         string processed = _whitespaceNewline.Replace(__instance.mProcessedText ?? string.Empty, string.Empty);
@@ -528,6 +555,20 @@ public static class UIComponentPatch
 
         __instance.overflowMethod = UILabel.Overflow.ResizeFreely;
         __instance.ProcessText();
+    }
+
+    /// <summary>Width of the nearest <see cref="BoxCollider"/> on or above
+    /// <paramref name="t"/> (a tab button's clickable slot), or -1 if none is
+    /// found within a few parent levels.</summary>
+    private static int NearestColliderWidth(Transform t)
+    {
+        for (int up = 0; up < 5 && t.IsSafe(); up++)
+        {
+            var col = t!.GetComponent<BoxCollider>();
+            if (col.IsSafe()) return Mathf.RoundToInt(col!.size.x);
+            t = t!.parent;
+        }
+        return -1;
     }
     #endregion
 
